@@ -1,0 +1,6 @@
+# Autoencoder only (Tier 3). Install AFTER requirements.txt.
+# Linux / WSL (CPU build, small download):
+#   pip install -r requirements-ml.txt --index-url https://download.pytorch.org/whl/cpu
+# Mac:
+#   pip install -r requirements-ml.txt
+torch==2.3.1

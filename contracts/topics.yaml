@@ -1,0 +1,6 @@
+# Frozen Kafka topics (revision A). Laptop values are used by infra/create_topics.py.
+bootstrap_laptop: localhost:9092
+topics:
+  telemetry.smd:     {key: entity_id, partitions_laptop: 4, partitions_cluster: 8,  replication_laptop: 1, replication_cluster: 3}
+  telemetry.alibaba: {key: entity_id, partitions_laptop: 4, partitions_cluster: 32, replication_laptop: 1, replication_cluster: 3}
+  anomalies:         {key: entity_id, partitions_laptop: 4, partitions_cluster: 8,  replication_laptop: 1, replication_cluster: 3}
