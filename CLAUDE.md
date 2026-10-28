@@ -36,11 +36,12 @@ All names, paths, columns and types live in `contracts/schemas.py` and `contract
   Train only on SMD `attrs.split = train` rows; evaluate only on `test` rows.
 - Spark checkpoints go under `checkpoints/<job_name>/`. Trained models go under `models/<name>/` (e.g. `models/kmeans_smd/`); both are git-ignored.
 
-## Team machines: Windows + Git Bash
+## Team machines: Windows (PowerShell or Git Bash)
 
-Everyone works on Windows in Git Bash (not WSL). One-time setup: `bash tools/setup_windows.sh`.
-- Activate the venv with `source .venv/Scripts/activate` (not `.venv/bin/activate`); create it with `py -3.11 -m venv .venv`.
-- PySpark needs `HADOOP_HOME` with `winutils.exe` and `hadoop.dll` (the setup script installs them in `~/hadoop/bin`)
+Everyone works on Windows, not WSL. Give commands for the shell the user is in; default to PowerShell.
+- One-time setup. PowerShell: `powershell -ExecutionPolicy Bypass -File tools\setup_windows.ps1`. Git Bash: `bash tools/setup_windows.sh`.
+- Activate the venv. PowerShell: `.\.venv\Scripts\Activate.ps1`. Git Bash: `source .venv/Scripts/activate`. Create it with `py -3.11 -m venv .venv`.
+- PySpark needs `HADOOP_HOME` with `winutils.exe` and `hadoop.dll` (the setup script installs them in `%USERPROFILE%\hadoop\bin`)
   and `PYSPARK_PYTHON=python`. If Spark fails with winutils, HADOOP_HOME or "Python worker failed to connect", check these first.
 - Kafka runs in Docker Desktop: `docker compose -f infra/docker-compose.yml up -d`.
 - Use forward slashes and `pathlib` in code; never hard-code `C:\\`. Keep `git config core.autocrlf input`.
