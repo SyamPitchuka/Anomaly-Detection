@@ -30,13 +30,17 @@ if real:
     ents = pc.unique(t["entity_id"]).to_pylist()
     check(len(ents) == 28, f"28 machines (found {len(ents)})")
     check(all(e.startswith("machine-") for e in ents), "entity_id looks like machine-1-1")
-    keys = set(pc.unique(pc.list_flatten(pc.map_keys(t["metrics"]))).to_pylist())
+    metric_rows = t["metrics"].to_pylist()
+    keys = {key for row in metric_rows if row for key, _ in row}
     check(keys == set(S.SMD_METRICS), f"metric keys are exactly m00..m37 (found {len(keys)})")
-    splits = pc.list_flatten(pc.map_values(t["attrs"]))
-    n_test = pc.sum(pc.equal(splits, "test")).as_py() or 0
-    n_train = pc.sum(pc.equal(splits, "train")).as_py() or 0
+    split_values = [dict(attrs or []).get("split") for attrs in t["attrs"].to_pylist()]
+    n_test = split_values.count("test")
+    n_train = split_values.count("train")
     check(n_train > 0 and n_test > 0, f"attrs.split has train ({n_train}) and test ({n_test}) rows")
-    n_pos = pc.sum(pc.equal(t["label"], 1)).as_py() or 0
+    n_pos = sum(
+        label == 1 and dict(attrs).get("split") == "test"
+        for attrs, label in zip(t["attrs"].to_pylist(), t["label"].to_pylist())
+    )
     check(n_pos > 0, f"test rows include label = 1 ({n_pos} anomalous rows)")
     print(f"     total rows: {t.num_rows}")
 
