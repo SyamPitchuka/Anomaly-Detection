@@ -1,6 +1,6 @@
 # Scalable real-time anomaly detection on data-center telemetry
 
-Team SPARK: Syamprasad P, Samritha D, Venkatesh P A, Raghav Mishra (IISc).
+Team SPARK (IISc) : Syam Prasad P, Samritha D, Venkatesh P A, Raghav Mishra.
 
 Trace replay → Kafka → Spark Structured Streaming (features → scoring → incidents) → Parquet → dashboard.
 
