@@ -1,0 +1,67 @@
+{
+ "meta": {
+  "machines": 2,
+  "records": 104346,
+  "repeats": 1,
+  "cpu_count": 12,
+  "host": "Windows, Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "date": "2026-11-01",
+  "files_per_trigger": 1,
+  "batches": 2,
+  "note": "smoke test before --files-per-trigger existed (implicit 1)",
+  "title": "Before: 1 machine file per trigger (flat)",
+  "explanation": "Smoke test with the job's default `--files-per-trigger 1`. Each micro-batch held one machine, i.e. a single key of the `applyInPandasWithState` operator, so one task did all the scoring while the other cores sat idle; the second core only added scheduling overhead. The runs below therefore put 8 machines in each micro-batch."
+ },
+ "runs": {
+  "1": [
+   {
+    "wall_s": 176.96676010001102,
+    "batch_s": 130.911,
+    "records": 104346,
+    "batches": 2,
+    "rps": 797.0758759768087,
+    "peak_state": 2,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 56958,
+      "ms": 74220,
+      "state": 1
+     },
+     {
+      "batch": 1,
+      "rows": 47388,
+      "ms": 56691,
+      "state": 2
+     }
+    ],
+    "status": "ok"
+   }
+  ],
+  "2": [
+   {
+    "wall_s": 186.8001726999937,
+    "batch_s": 142.972,
+    "records": 104346,
+    "batches": 2,
+    "rps": 729.8352124891587,
+    "peak_state": 2,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 56958,
+      "ms": 94848,
+      "state": 1
+     },
+     {
+      "batch": 1,
+      "rows": 47388,
+      "ms": 48124,
+      "state": 2
+     }
+    ],
+    "status": "ok"
+   }
+  ]
+ }
+}

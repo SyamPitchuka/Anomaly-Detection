@@ -39,11 +39,14 @@ OUTPUT_DIR = ROOT / S.PATHS["features"] / f"source={SOURCE}"
 CHECKPOINT_DIR = ROOT / "checkpoints" / "features" / f"source={SOURCE}"
 
 
-def build_spark(app_name: str = "features_job", with_kafka: bool = True) -> SparkSession:
-    builder = (SparkSession.builder.appName(app_name).master("local[*]")
+def build_spark(app_name: str = "features_job", with_kafka: bool = True, master: str = "local[*]",
+                shuffle_partitions: int = 4) -> SparkSession:
+    builder = (SparkSession.builder.appName(app_name).master(master)
                .config("spark.sql.session.timeZone", "UTC")
                .config("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
-               .config("spark.sql.shuffle.partitions", "4")
+               .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+               # keep one long-lived Python worker per core (models load once per worker; Spark's default)
+               .config("spark.python.worker.reuse", "true")
                # the console progress bar would print over the per-batch lines
                .config("spark.ui.showConsoleProgress", "false"))
     if with_kafka:
