@@ -20,8 +20,9 @@ Steps:
    any scored metric has a null score and is not flagged.
 4. Output: data/scores_tier1/source=smd with entity_id, window_start, window_end, tier1_score, tier1_flag, label
    (baselines.py joins it into the scores layer).
-5. Prints point-adjusted event precision/recall/F1 from src/detection/evaluate.py, per machine on
-   time-ordered test windows and overall.
+5. Prints, per machine on time-ordered test windows and overall (same report columns as the autoencoder, so Tier 1
+   sits in the same table): composite F1, faults caught, alarm precision, false alarms per machine per day, and the
+   point-adjusted event F1 (generous, for reference), all from src/detection/evaluate.py.
 """
 import argparse
 import os
@@ -45,7 +46,7 @@ from pyspark.sql import DataFrame, SparkSession  # noqa: E402
 from pyspark.sql import functions as F  # noqa: E402
 
 from contracts import schemas as S  # noqa: E402
-from src.detection.evaluate import event_metrics  # noqa: E402
+from src.detection.evaluate import composite_metrics, event_metrics, false_alarms_per_day  # noqa: E402
 
 METRICS = {"smd": S.SMD_METRICS}
 WINDOW = "5 minutes"
@@ -61,6 +62,7 @@ MAD_TO_SIGMA = 1.4826         # MAD -> standard deviation for normal data
 MEAN_AD_TO_SIGMA = 1.2533      # mean absolute deviation -> standard deviation for normal data (sqrt(pi/2))
 SCALE_FLOOR = 1e-3             # last resort for a metric that is constant in train
 THRESHOLD = 3.0
+WINDOW_MINUTES = 5
 
 WINDOW_KEYS = ["entity_id", "window_start", "window_end"]
 
@@ -139,14 +141,24 @@ def score_windows(means: DataFrame, meta: DataFrame, stats: DataFrame) -> DataFr
 
 
 def evaluate(test_pdf: pd.DataFrame) -> dict:
-    """Event-level (point-adjusted) metrics per machine and overall, via src/detection/evaluate.py."""
-    rows, labels, flags = [], [], []
+    """Composite and event-level (point-adjusted) metrics per machine and overall, via src/detection/evaluate.py.
+
+    overall = event metrics over all machines (a 0 between machines keeps their anomaly segments apart);
+    composite and fa_day are the same overall numbers as in the autoencoder report (fa_day uses no separators)."""
+    rows, labels, flags, all_t, all_p = [], [], [], [], []
     for entity, g in test_pdf.sort_values(["entity_id", "window_start"]).groupby("entity_id"):
         t, p = g["label"].to_numpy(dtype=int), g["tier1_flag"].to_numpy(dtype=int)
-        rows.append({"machine": entity, "windows": len(g), "flagged": int(p.sum()), **event_metrics(t, p)})
-        labels += [*t, 0]     # a 0 between machines keeps their anomaly segments apart
+        ev, comp = event_metrics(t, p), composite_metrics(t, p)
+        rows.append({"machine": entity, "windows": len(g), "faults": comp["events"], "caught": comp["events_detected"],
+                     "flagged": int(p.sum()), "composite_f1": comp["composite_f1"],
+                     "alarm_prec": comp["alarm_precision"], "false_alarms/day": false_alarms_per_day(t, p, WINDOW_MINUTES),
+                     "event_f1": ev["f1"]})
+        labels += [*t, 0]
         flags += [*p, 0]
-    return {"overall": event_metrics(labels, flags), "per_machine": pd.DataFrame(rows)}
+        all_t += t.tolist()
+        all_p += p.tolist()
+    return {"overall": event_metrics(labels, flags), "composite": composite_metrics(labels, flags),
+            "fa_day": false_alarms_per_day(all_t, all_p, WINDOW_MINUTES), "per_machine": pd.DataFrame(rows)}
 
 
 def save_baselines(stats: pd.DataFrame, model_dir: Path) -> Path:
@@ -183,11 +195,14 @@ def run(source: str = "smd", sample: int | None = None, root: Path = ROOT,
           f"(tier1 flagged {int(test_pdf['tier1_flag'].sum())}, threshold z > {THRESHOLD:g})")
 
     result = evaluate(test_pdf)
-    o = result["overall"]
+    o, c = result["overall"], result["composite"]
     with pd.option_context("display.max_rows", None, "display.width", 200, "display.float_format", "{:.3f}".format):
-        print("\n=== Tier 1 robust z-score, event-level (point-adjusted) per machine")
+        print("\n=== Tier 1 robust z-score per machine (event_f1 is point-adjusted, generous)")
         print(result["per_machine"].to_string(index=False))
-    print(f"\nTier 1 event-level overall: precision {o['precision']:.3f}  recall {o['recall']:.3f}  "
+    print(f"\nOVERALL composite F1 {c['composite_f1']:.3f}  faults caught {c['events_detected']}/{c['events']} "
+          f"(event recall {c['event_recall']:.3f})  alarm precision {c['alarm_precision']:.3f}")
+    print(f"OVERALL false alarms per machine per day {result['fa_day']:.2f}")
+    print(f"Tier 1 event-level overall: precision {o['precision']:.3f}  recall {o['recall']:.3f}  "
           f"F1 {o['f1']:.3f}")
     for df in (scored, stats, means, meta):
         df.unpersist()

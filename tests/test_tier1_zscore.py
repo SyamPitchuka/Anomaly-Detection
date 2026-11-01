@@ -113,6 +113,18 @@ def test_planted_anomalies_are_flagged(result):
     assert result["overall"]["f1"] == pytest.approx(1.0)
 
 
+def test_composite_metrics_and_false_alarms(result):
+    c = result["composite"]
+    assert (c["events"], c["events_detected"]) == (2, 2)                  # one planted fault per machine
+    assert c["alarm_precision"] == pytest.approx(1.0) and c["composite_f1"] == pytest.approx(1.0)
+    assert result["fa_day"] == 0
+    pm = result["per_machine"].set_index("machine")
+    assert list(pm.columns) == ["windows", "faults", "caught", "flagged", "composite_f1", "alarm_prec",
+                                "false_alarms/day", "event_f1"]
+    assert (pm["faults"] == 1).all() and (pm["caught"] == 1).all() and (pm["flagged"] == 1).all()
+    assert (pm["false_alarms/day"] == 0).all()
+
+
 def test_scores_written(result, repo):
     dset = ds.dataset(repo / "data/scores_tier1", format="parquet", partitioning="hive")
     got = {f.name: f.type for f in dset.schema}
