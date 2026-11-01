@@ -4,6 +4,7 @@ Run from the repo root:
     python src/detection/baselines.py                 # all SMD machines
     python src/detection/baselines.py --sample 2      # first 2 machines, quick test
     python src/detection/baselines.py --kmax 6
+    python src/detection/baselines.py --recenter 24   # test windows centred on a rolling median
 
 Steps:
 1. Read data/raw/source=smd/*.parquet (fake.parquet is skipped) and build 5-minute tumbling windows per
@@ -14,6 +15,10 @@ Steps:
    label = max(label) (null -> 0), train windows null.
 2. Standardise per entity_id with the mean and population std of its train windows (Spark aggregation +
    join; std 0 or undefined -> 1, undefined mean -> 0); a missing value becomes 0 after standardising.
+   --recenter N (default 0 = off): test windows are centred on the median of the machine's previous N windows
+   (train or test; current window excluded; at least N // 2 values, else the train mean) instead of the train
+   mean; std stays from train. Computed per machine with applyInPandas and recenter_centers from
+   autoencoder.py. Train windows, the fitted models and the thresholds do not change. Saved in scaler.json.
 3. Tier 2: Pipeline VectorAssembler -> KMeans (seed 42). k in 3..--kmax is chosen by the silhouette
    (ClusteringEvaluator) of a model fitted on a 20% sample of train windows; the final model is fitted on
    all train windows. tier2_score = Euclidean distance to the nearest centroid.
@@ -57,7 +62,7 @@ from pyspark.sql import functions as F  # noqa: E402
 
 from contracts import schemas as S  # noqa: E402
 # Reused so the baseline rows are printed exactly like the AE v2 rows.
-from src.detection.autoencoder import SCORES_AE_DIR, SKIP_FILES, _print_report  # noqa: E402
+from src.detection.autoencoder import SCORES_AE_DIR, SKIP_FILES, _print_report, recenter_centers  # noqa: E402
 from src.detection.autoencoder import evaluate as evaluate_flags  # noqa: E402
 
 METRICS = {"smd": S.SMD_METRICS}
@@ -72,6 +77,7 @@ SILHOUETTE_FRACTION = 0.20
 PCA_VARIANCE = 0.90
 THRESHOLD_PERCENTILE = 99.5
 THRESHOLD_FACTOR = 1.1
+RECENTER = 0
 
 # Tier name -> (score column, flag column) for the evaluation report.
 TIERS = {"Tier 2 KMeans": ("tier2_score", "tier2_flag"),
@@ -135,12 +141,53 @@ def scaler_stats(windows: DataFrame, metrics: list[str]) -> DataFrame:
           .otherwise(F.col(f"{m}__std")).alias(f"{m}__std") for m in metrics])
 
 
-def standardise(windows: DataFrame, stats: DataFrame, metrics: list[str]) -> DataFrame:
+def recenter_info(windows: int) -> dict | None:
+    """The recenter setting as saved in scaler.json (same keys as autoencoder.py); None when off."""
+    return ({"windows": windows, "min_periods": max(1, windows // 2), "statistic": "median",
+             "applies_to": "test", "fallback": "train mean"} if windows else None)
+
+
+def recenter_stats(windows: DataFrame, stats: DataFrame, metrics: list[str], n: int) -> DataFrame:
+    """Per test window: <metric>__center = median of the machine's previous n windows (train and test,
+    current one excluded, at least n // 2 values, else the train mean), via recenter_centers in
+    autoencoder.py, run once per entity_id with applyInPandas. Columns: entity_id, ws_us, *<metric>__center."""
+    means = [f"{m}__mean" for m in metrics]
+    centers = [f"{m}__center" for m in metrics]
+    joined = (windows.join(stats.select("entity_id", *means), "entity_id", "left")
+              .select("entity_id", "ws_us", "split", *metrics, *means))
+    schema = "entity_id string, ws_us long, " + ", ".join(f"{c} double" for c in centers)
+
+    def _centers(pdf: pd.DataFrame) -> pd.DataFrame:
+        pdf = pdf.sort_values("ws_us").reset_index(drop=True)
+        X = pdf[metrics].to_numpy(dtype=np.float64)                    # null -> NaN, skipped by the median
+        mean = np.nan_to_num(pdf[means].iloc[0].to_numpy(dtype=np.float64), nan=0.0)  # no train windows -> 0
+        C = recenter_centers(pdf[["entity_id", "split"]], X, {pdf["entity_id"].iloc[0]: {"mean": mean}}, n)
+        test = (pdf["split"] == "test").to_numpy()
+        out = pd.DataFrame(C[test], columns=centers)
+        out.insert(0, "ws_us", pdf.loc[test, "ws_us"].to_numpy())
+        out.insert(0, "entity_id", pdf.loc[test, "entity_id"].to_numpy())
+        return out
+
+    return joined.groupBy("entity_id").applyInPandas(_centers, schema)
+
+
+def standardise(windows: DataFrame, stats: DataFrame, metrics: list[str],
+                centers: DataFrame | None = None) -> DataFrame:
     """Metric columns replaced by (value - mean) / std; a machine without train windows uses mean 0, std 1;
-    a missing value becomes 0."""
+    a missing value becomes 0. With centers (from recenter_stats), test windows use <metric>__center
+    instead of the train mean; train windows always use the train mean."""
     joined = windows.join(stats, "entity_id", "left")
-    z = [F.coalesce((F.col(m) - F.coalesce(F.col(f"{m}__mean"), F.lit(0.0)))
-                    / F.coalesce(F.col(f"{m}__std"), F.lit(1.0)), F.lit(0.0)).alias(m) for m in metrics]
+    if centers is not None:
+        joined = joined.join(centers, ["entity_id", "ws_us"], "left")
+
+    def center(m: str):
+        mean = F.coalesce(F.col(f"{m}__mean"), F.lit(0.0))
+        if centers is None:
+            return mean
+        return F.when(F.col("split") == "test", F.coalesce(F.col(f"{m}__center"), mean)).otherwise(mean)
+
+    z = [F.coalesce((F.col(m) - center(m)) / F.coalesce(F.col(f"{m}__std"), F.lit(1.0)), F.lit(0.0)).alias(m)
+         for m in metrics]
     return joined.select("entity_id", "window_start", "window_end", "ws_us", "split", "label", *z)
 
 
@@ -298,7 +345,7 @@ def report(test_pdf: pd.DataFrame, tiers: dict = TIERS) -> dict:
 # ---------------------------------------------------------------- driver
 
 def run(source: str = "smd", sample: int | None = None, kmax: int = K_MAX, root: Path = ROOT,
-        spark: SparkSession | None = None) -> dict:
+        spark: SparkSession | None = None, recenter: int = RECENTER) -> dict:
     metrics = METRICS[source]
     spark = spark or build_spark()
     files = raw_files(root / S.PATHS["raw"] / f"source={source}", sample)
@@ -309,7 +356,8 @@ def run(source: str = "smd", sample: int | None = None, kmax: int = K_MAX, root:
     z = standardise(windows, stats, metrics).cache()
     counts = {r["split"]: r["count"] for r in z.groupBy("split").count().collect()}
     print(f"{len(files)} machines, {counts.get('train', 0)} train + {counts.get('test', 0)} test windows")
-    scaler = {"metrics": metrics, "window": WINDOW, "entities": stats_to_json(stats, metrics)}
+    scaler = {"metrics": metrics, "window": WINDOW, "recenter": recenter_info(recenter),
+              "entities": stats_to_json(stats, metrics)}
 
     train = z.filter(F.col("split") == "train")
     kmeans, k, silhouette = fit_kmeans(train, metrics, kmax)
@@ -318,7 +366,14 @@ def run(source: str = "smd", sample: int | None = None, kmax: int = K_MAX, root:
     print(f"pca: {n_comp} of {len(metrics)} components explain {cumulative[n_comp - 1]:.3f} of the train variance "
           f"(target {PCA_VARIANCE})")
 
-    scored = score_windows(z, kmeans, pca, metrics).cache()
+    # The models are fitted on z above; recentring only changes the test windows that get scored.
+    z_score, centers = z, None
+    if recenter:
+        centers = recenter_stats(windows, stats, metrics, recenter).cache()
+        z_score = standardise(windows, stats, metrics, centers).cache()
+        print(f"recenter: test windows centred on the median of the previous {recenter} windows "
+              f"(at least {max(1, recenter // 2)}, else the train mean)")
+    scored = score_windows(z_score, kmeans, pca, metrics).cache()
     thr = {"tier2_score": threshold(scored, "tier2_score"), "pca_score": threshold(scored, "pca_score")}
     scored = (scored.withColumn("tier2_flag", F.col("tier2_score") > thr["tier2_score"])
               .withColumn("pca_flag", F.col("pca_score") > thr["pca_score"]))
@@ -354,10 +409,11 @@ def run(source: str = "smd", sample: int | None = None, kmax: int = K_MAX, root:
           f"is_anomaly {int(test_pdf['is_anomaly'].sum())})")
 
     results = report(test_pdf)
-    for df in (test, scored, z, stats, windows):
+    for df in (test, scored, z_score, z, stats, windows) + ((centers,) if centers is not None else ()):
         df.unpersist()
     return {"test": test_pdf, "thresholds": thr, "k": k, "silhouette": silhouette, "n_components": n_comp,
-            "results": results}
+            "results": results, "recenter": recenter,
+            "centers": np.asarray(kmeans.stages[-1].clusterCenters()), "pc": pca.stages[-1].pc.toArray()}
 
 
 def main() -> int:
@@ -365,14 +421,18 @@ def main() -> int:
     parser.add_argument("--source", choices=sorted(METRICS), default="smd")
     parser.add_argument("--sample", type=int, default=None, help="use only the first N machines")
     parser.add_argument("--kmax", type=int, default=K_MAX, help=f"largest k tried for KMeans (from {K_MIN})")
+    parser.add_argument("--recenter", type=int, default=RECENTER,
+                        help="centre test windows on the median of the previous N windows (0 = train mean)")
     parser.add_argument("--root", type=Path, default=ROOT, help="repo root that contains data/ and models/")
     args = parser.parse_args()
     if args.kmax < K_MIN:
         parser.error(f"--kmax must be at least {K_MIN}")
+    if args.recenter < 0:
+        parser.error("--recenter must be 0 or more")
     spark = build_spark()
     spark.sparkContext.setLogLevel("ERROR")
     try:
-        run(args.source, args.sample, args.kmax, args.root, spark)
+        run(args.source, args.sample, args.kmax, args.root, spark, recenter=args.recenter)
     finally:
         spark.stop()
     return 0
