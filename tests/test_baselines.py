@@ -157,3 +157,95 @@ def test_scores_layer(result, repo):
     assert table["is_anomaly"].sum() == 1
     assert bool(table.loc[m11, "is_anomaly"].iloc[0])
     assert table.loc[m11, "top_metrics"].iloc[0].tolist() == ["m00", "m01", "m02"]
+
+
+# ---------------------------------------------------------------- --recenter with a lasting level shift
+
+SHIFT_TRAIN, SHIFT_TEST = 4000, 300       # rows -> 800 train (enough for a calibrated PCA) + 60 test windows
+SHIFT_FROM = 10                           # test windows 10.. sit on a new level (+10 on m00..m05)
+SPIKE = (45, 46)                          # short spike (+10 on m10..m15) on top of the new level
+RECENTER_N = 24
+
+
+def _shift_table(machine: str, seed: int, shift: bool) -> pa.Table:
+    """38 metrics of independent unit noise around a level; with shift, a lasting level shift and a short spike."""
+    rng = np.random.default_rng(seed)
+    n = SHIFT_TRAIN + SHIFT_TEST
+    t = np.arange(n, dtype=np.int64)
+    values = rng.normal(size=(n, 38)) + 10 * seed
+    label = np.zeros(SHIFT_TEST, dtype=np.int32)
+    if shift:
+        values[SHIFT_TRAIN + 5 * SHIFT_FROM:, :6] += 10.0
+        label[5 * SHIFT_FROM:5 * SHIFT_FROM + 5] = 1
+        for w in SPIKE:
+            values[SHIFT_TRAIN + 5 * w:SHIFT_TRAIN + 5 * w + 5, 10:16] += 10.0
+            label[5 * w:5 * w + 5] = 1
+    split = ["train"] * SHIFT_TRAIN + ["test"] * SHIFT_TEST
+    return pa.Table.from_arrays(
+        [
+            pa.array([machine] * n, type=pa.string()),
+            pa.array(BASE_US + t * 60_000_000, type=pa.int64()).cast(pa.timestamp("us", tz="UTC")),
+            pa.array([list(zip(S.SMD_METRICS, v)) for v in values.tolist()],
+                     type=pa.map_(pa.string(), pa.float64())),
+            pa.array([[("split", s)] for s in split], type=pa.map_(pa.string(), pa.string())),
+            pa.concat_arrays([pa.nulls(SHIFT_TRAIN, pa.int32()), pa.array(label, type=pa.int32())]),
+        ],
+        schema=S.arrow_schema("raw"),
+    )
+
+
+@pytest.fixture(scope="module")
+def shift_runs(tmp_path_factory, spark):
+    """The same shifted data run with --recenter 0 and --recenter 24, each in its own repo root."""
+    runs = {}
+    for n in (0, RECENTER_N):
+        root = tmp_path_factory.mktemp(f"shift_recenter{n}")
+        raw = root / "data/raw/source=smd"
+        raw.mkdir(parents=True)
+        pq.write_table(_shift_table("machine-1-1", 1, shift=True), raw / "machine-1-1.parquet")
+        pq.write_table(_shift_table("machine-1-2", 2, shift=False), raw / "machine-1-2.parquet")
+        runs[n] = (root, M.run("smd", kmax=4, root=root, spark=spark, recenter=n))
+    return runs
+
+
+def _test_flags(result: dict, flag: str) -> np.ndarray:
+    own = result["test"][result["test"]["entity_id"] == "machine-1-1"].sort_values("ws_us")
+    assert len(own) == SHIFT_TEST // 5
+    return own[flag].to_numpy(dtype=bool)
+
+
+def test_recenter_level_shift(shift_runs):
+    off, on = shift_runs[0][1], shift_runs[RECENTER_N][1]
+    for flag in ("tier2_flag", "pca_flag"):
+        # without recentring, every window on the new level keeps being flagged
+        before = _test_flags(off, flag)
+        assert before[SHIFT_FROM:].all(), flag
+        after = _test_flags(on, flag)
+        # recentred: flagged until the median of the previous 24 windows has caught up (13 shifted windows)
+        assert after[SHIFT_FROM:SHIFT_FROM + RECENTER_N // 2].all(), flag
+        caught_up = np.arange(SHIFT_FROM + RECENTER_N // 2 + 1, SHIFT_TEST // 5)
+        quiet = [w for w in caught_up if w not in SPIKE]
+        assert not after[quiet].any(), (flag, np.flatnonzero(after))
+        # the short spike on top of the new level is still flagged
+        assert after[SPIKE[0]], flag
+
+
+def test_recenter_keeps_train_side(shift_runs):
+    """Train windows, the fitted models and the thresholds are the same with and without recentring."""
+    off, on = shift_runs[0][1], shift_runs[RECENTER_N][1]
+    assert on["thresholds"] == off["thresholds"]
+    assert on["k"] == off["k"] and on["n_components"] == off["n_components"]
+    np.testing.assert_array_equal(on["centers"], off["centers"])
+    np.testing.assert_array_equal(on["pc"], off["pc"])
+
+
+def test_recenter_saved_in_scaler(shift_runs):
+    for n, (root, _) in shift_runs.items():
+        for name in ("kmeans_smd", "pca_smd"):
+            scaler = json.loads((root / "models" / name / "scaler.json").read_text())
+            if n == 0:
+                assert scaler["recenter"] is None
+            else:
+                assert scaler["recenter"] == {"windows": RECENTER_N, "min_periods": RECENTER_N // 2,
+                                              "statistic": "median", "applies_to": "test",
+                                              "fallback": "train mean"}
