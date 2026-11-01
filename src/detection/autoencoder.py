@@ -234,6 +234,18 @@ class DenseAE(nn.Module):
         return self.decoder(self.encoder(x))
 
 
+def load_model(model_dir: Path) -> tuple[DenseAE, dict, dict]:
+    """(model in eval mode, scaler.json, threshold.json) as written by run(); used by the streaming job."""
+    model_dir = Path(model_dir)
+    ckpt = torch.load(model_dir / "model.pt", map_location="cpu")
+    model = DenseAE(ckpt["n_in"], tuple(ckpt["hidden"]))
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval()
+    scaler = json.loads((model_dir / "scaler.json").read_text())
+    threshold = json.loads((model_dir / "threshold.json").read_text())
+    return model, scaler, threshold
+
+
 def _masked_mse(out, z, mask):
     return ((out - z) ** 2 * mask).sum() / mask.sum().clamp(min=1)
 
