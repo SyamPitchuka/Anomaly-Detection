@@ -13,7 +13,7 @@ Steps:
 2. Per machine-metric, from train windows only: median and MAD = median(|x - median|); scale = 1.4826 x MAD.
    Guard for MAD = 0 (--mad-zero): `skip` (default, what the stream scoring job does) leaves that
    machine-metric unscored; `fallback` uses 1.2533 x mean absolute deviation, then SCALE_FLOOR if that is 0 too.
-   Saved as the single file models/tier1_smd/baselines.parquet with exactly entity_id, metric, median, mad
+   Saved as the single file models/tier1_smd/baselines_v1.parquet with exactly entity_id, metric, median, mad
    (the contract with the stream job: z = |mean - median| / (1.4826 x mad), metrics with mad = 0 skipped).
 3. Test windows: z = |x - median| / scale per metric; tier1_score = max z over the metrics of the window,
    tier1_flag = tier1_score > 3. A machine-metric without train windows is not scored; a window without
@@ -54,7 +54,7 @@ SKIP_FILES = {"fake.parquet"}
 SCORES_TIER1_DIR = "data/scores_tier1"
 MODEL_DIR = "models/tier1_<source>"
 
-BASELINES_FILE = "baselines.parquet"
+BASELINES_FILE = "baselines_v1.parquet"   # what score_job.py --tier1 v1 reads
 BASELINE_COLUMNS = ["entity_id", "metric", "median", "mad"]   # agreed with the stream scoring job
 MAD_ZERO = "skip"              # the stream skips metrics with MAD = 0; "fallback" is kept for comparison
 
@@ -162,7 +162,7 @@ def evaluate(test_pdf: pd.DataFrame) -> dict:
 
 
 def save_baselines(stats: pd.DataFrame, model_dir: Path) -> Path:
-    """models/tier1_smd/baselines.parquet: one file, exactly entity_id, metric, median, mad (the stream's input)."""
+    """models/tier1_smd/baselines_v1.parquet: one file, exactly entity_id, metric, median, mad (the stream's input)."""
     shutil.rmtree(model_dir, ignore_errors=True)
     model_dir.mkdir(parents=True)
     path = model_dir / BASELINES_FILE

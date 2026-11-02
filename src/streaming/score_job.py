@@ -5,9 +5,13 @@ Run from the repo root:
     python src/streaming/score_job.py --input kafka --once     # what is in Kafka now, then stop
     python src/streaming/score_job.py --input files --machines 2 --once   # replay data/raw/source=smd
     python src/streaming/score_job.py --input files --once --reset        # wipe output + checkpoint first
+    python src/streaming/score_job.py --input files --once --tier1 v1     # also fill tier1_score/tier1_flag
+    python src/streaming/score_job.py --input files --once --master local[2] --shuffle-partitions 4
+    python src/streaming/score_job.py --input files --once --files-per-trigger 8   # 8 machines per batch
 
 Input: Kafka topic telemetry.smd parsed with contracts.schemas.TELEMETRY_JSON_DDL, or a readStream of the
-raw-layer Parquet files (one file per trigger, fake.parquet skipped). 10-minute watermark on event_time.
+raw-layer Parquet files (one file per trigger, or --files-per-trigger N; fake.parquet skipped). 10-minute
+watermark on event_time.
 
 Windows and scoring happen in one applyInPandasWithState keyed by entity_id (GroupStateTimeout.NoTimeout).
 The windows are built inside it rather than by a Spark window aggregation for two reasons: Spark 3.5 does
@@ -28,8 +32,10 @@ Train windows are scored too (they feed the rolling median and the score history
 windows are written.
 
 Hooks, each optional:
-- Tier 1: models/tier1_smd/baselines.parquet (entity_id, metric, median, mad) -> see load_tier1_baselines()
-  and tier1_scores(). Missing file -> tier1_score / tier1_flag null.
+- Tier 1 (--tier1 v1, default off): models/tier1_smd/baselines_v1.parquet (entity_id, metric, median, mad)
+  -> see load_tier1_baselines() and tier1_scores(). Off -> tier1_score / tier1_flag null. Tier 1 is a
+  baseline and explainer only: it never changes is_anomaly (see docs/results/tier1_stream.md). The switch
+  reaches the Python workers through the SCORE_JOB_TIER1 environment variable, set before Spark starts.
 - Tier 2 / 2b: if src/detection/stream_baselines.py exists, score_baselines(pdf, models) is called on the
   emitted windows. pdf has entity_id, window_start (int64 microseconds UTC), split and <metric>_mean,
   <metric>_max for m00..m37 (NaN = no value); models is this job's model dict, with
@@ -38,7 +44,7 @@ Hooks, each optional:
 
 Output: test windows -> data/scores_stream/source=smd/batch-<id>.parquet (one file per micro-batch, so a
 replayed batch overwrites its own file), columns of contracts.schemas.LAYERS['scores'],
-is_anomaly = coalesce(ae_flag, false) OR coalesce(tier1_flag, false). Checkpoint: checkpoints/score/source=smd.
+is_anomaly = coalesce(ae_flag, false) (AE only). Checkpoint: checkpoints/score/source=smd.
 With --input kafka, rows with is_anomaly also go to the anomalies topic (key entity_id, value JSON).
 """
 import argparse
@@ -50,6 +56,11 @@ from pathlib import Path
 # On Windows, Spark must start workers with this same venv Python (as in tools/check_spark_kafka.py).
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+# One math thread per Python worker: Spark already runs one worker per core, so OpenMP / MKL / OpenBLAS
+# pools sized to every hardware thread would oversubscribe the CPU. Set before the SparkSession exists,
+# so the local-mode Python workers inherit them; load_models() also calls torch.set_num_threads(1).
+for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+    os.environ[_var] = "1"
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -76,7 +87,9 @@ WATERMARK_US = 10 * 60 * 1_000_000
 TRIGGER = "30 seconds"
 
 AE_DIR = ROOT / S.MODELS["ae"].replace("<source>", SOURCE)
-TIER1_PATH = ROOT / "models" / f"tier1_{SOURCE}" / "baselines.parquet"
+TIER1_PATH = ROOT / "models" / f"tier1_{SOURCE}" / "baselines_v1.parquet"
+TIER1_MODES = ("off", "v1")
+TIER1_ENV = "SCORE_JOB_TIER1"   # how --tier1 reaches the Python workers (inherited from the driver)
 TIER1_MAD_SCALE = 1.4826
 TIER1_Z = 3.0
 BASELINES_MODULE = ROOT / "src" / "detection" / "stream_baselines.py"
@@ -147,16 +160,27 @@ def tier1_scores(entity: str, means: np.ndarray, baselines: dict | None) -> tupl
     return score, [bool(s > TIER1_Z) if v else None for s, v in zip(score, valid)]
 
 
-def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH) -> dict:
+def tier1_mode() -> str:
+    """--tier1 as seen by this process: SCORE_JOB_TIER1, default off."""
+    mode = os.environ.get(TIER1_ENV, "off")
+    if mode not in TIER1_MODES:
+        raise ValueError(f"{TIER1_ENV}={mode!r}, expected one of {TIER1_MODES}")
+    return mode
+
+
+def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH, tier1: str | None = None) -> dict:
+    """tier1: 'off' or 'v1' (None -> tier1_mode()). Tier 1 baselines are loaded only for 'v1'."""
     import torch
-    torch.set_num_threads(1)  # several Python workers already run in parallel
-    models = {"ae": ae_bundle(*AE.load_model(ae_dir)), "tier1": load_tier1_baselines(tier1_path),
+    tier1 = tier1_mode() if tier1 is None else tier1
+    torch.set_num_threads(1)  # runs on each worker: several Python workers already run in parallel
+    models = {"ae": ae_bundle(*AE.load_model(ae_dir)),
+              "tier1": load_tier1_baselines(tier1_path) if tier1 == "v1" else None,
               "baselines_module": None, "baselines": None}
     if BASELINES_MODULE.exists():
         from src.detection import stream_baselines
         models["baselines_module"] = stream_baselines
         if hasattr(stream_baselines, "load_models"):
-            models["baselines"] = stream_baselines.load_models()
+            models["baselines"] = stream_baselines.load_models(history_windows=models["ae"]["recenter"])
     return models
 
 
@@ -285,6 +309,8 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
         return pd.DataFrame(columns=OUTPUT_COLUMNS), late
     means, maxes, split, label = _window_values(w)
     n = len(means)
+    i_mean = models["ae"]["aggs"].index("mean")   # previous window means, before score_windows updates hist_x
+    history = st["hist_x"][:, i_mean * K:(i_mean + 1) * K]
     ae_score, ae_flag, top = score_windows(entity, means, maxes, split, st, models["ae"])
     out = pd.DataFrame({"entity_id": [entity] * n, "ws_us": w["open_starts"], "split": split, "label": label,
                         "ae_score": ae_score, "ae_flag": pd.Series(ae_flag, dtype=object), "top_metrics": top})
@@ -298,7 +324,7 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
         pdf.insert(0, "entity_id", entity)
         pdf.insert(1, "window_start", w["open_starts"])
         pdf.insert(2, "split", split)
-        res = module.score_baselines(pdf, models)
+        res = module.score_baselines(pdf, models, history)
         out["tier2_score"] = np.asarray(res["tier2_score"], dtype=np.float64)
         out["tier2_flag"] = [None if pd.isna(f) else bool(f) for f in res["tier2_flag"]]
         out["pca_score"] = np.asarray(res["pca_score"], dtype=np.float64)
@@ -318,7 +344,7 @@ def score_group(key, pdf_iter, state):
 
 # ---------------------------------------------------------------- Spark
 
-def read_files(spark, machines: int | None):
+def read_files(spark, machines: int | None, files_per_trigger: int = 1):
     raw_dir = ROOT / S.PATHS["raw"] / f"source={SOURCE}"
     files = sorted(p for p in raw_dir.glob("*.parquet") if p.name not in AE.SKIP_FILES)
     if machines:
@@ -326,7 +352,8 @@ def read_files(spark, machines: int | None):
     if not files:
         raise FileNotFoundError(f"no machine Parquet files under {raw_dir}")
     glob = "{" + ",".join(p.name for p in files) + "}"
-    return (spark.readStream.schema(RAW_DDL).option("maxFilesPerTrigger", 1).option("pathGlobFilter", glob)
+    return (spark.readStream.schema(RAW_DDL).option("maxFilesPerTrigger", files_per_trigger)
+            .option("pathGlobFilter", glob)
             .parquet(raw_dir.as_posix()).withWatermark("event_time", WATERMARK)), [p.stem for p in files]
 
 
@@ -344,7 +371,7 @@ def build_scores(telemetry):
         mod.score_group, OUTPUT_DDL, STATE_DDL, "append", GroupStateTimeout.NoTimeout)
     cols = {"window_start": F.expr("timestamp_micros(ws_us)"),
             "window_end": F.expr(f"timestamp_micros(ws_us + {WINDOW_US})"),
-            "is_anomaly": F.coalesce("ae_flag", F.lit(False)) | F.coalesce("tier1_flag", F.lit(False)),
+            "is_anomaly": F.coalesce("ae_flag", F.lit(False)),   # AE only; Tier 1 never raises the alarm
             "label": F.col("label").cast("int")}
     return windows.select(*[cols.get(c, F.col(c)).alias(c) for c in S.LAYERS["scores"]], "split", "ws_us")
 
@@ -376,6 +403,14 @@ def main(argv=None) -> int:
     parser.add_argument("--once", action="store_true", help="trigger(availableNow=True), then stop")
     parser.add_argument("--reset", action="store_true",
                         help="delete data/scores_stream/source=smd and checkpoints/score/source=smd first")
+    parser.add_argument("--tier1", choices=TIER1_MODES, default="off",
+                        help="off (default): tier1 columns null; v1: robust z vs train median from "
+                             "models/tier1_smd/baselines_v1.parquet. is_anomaly stays AE only either way")
+    parser.add_argument("--files-per-trigger", type=int, default=1,
+                        help="files input: machine files per micro-batch (maxFilesPerTrigger, default 1)")
+    parser.add_argument("--master", default="local[*]", help="Spark master, e.g. local[4] (default local[*])")
+    parser.add_argument("--shuffle-partitions", type=int, default=4,
+                        help="spark.sql.shuffle.partitions (default 4)")
     args = parser.parse_args(argv)
 
     if not (AE_DIR / "model.pt").exists():
@@ -385,9 +420,11 @@ def main(argv=None) -> int:
         for d in (OUTPUT_DIR, CHECKPOINT_DIR):
             shutil.rmtree(d, ignore_errors=True)
         print("reset: removed stream output and checkpoint", flush=True)
-    if not TIER1_PATH.exists():
-        print(f"note: {TIER1_PATH.relative_to(ROOT).as_posix()} not found, tier1_score/tier1_flag stay null",
-              flush=True)
+    if args.tier1 == "v1" and not TIER1_PATH.exists():
+        print(f"FAIL --tier1 v1 needs {TIER1_PATH.relative_to(ROOT).as_posix()}: run src/detection/tier1_zscore.py")
+        return 1
+    os.environ[TIER1_ENV] = args.tier1   # before the SparkSession, so the Python workers inherit it
+    print(f"tier1: {args.tier1} (is_anomaly = ae_flag only)", flush=True)
     if not BASELINES_MODULE.exists():
         print(f"note: {BASELINES_MODULE.relative_to(ROOT).as_posix()} not found, "
               "tier2_score/tier2_flag/pca_score stay null", flush=True)
@@ -396,12 +433,13 @@ def main(argv=None) -> int:
     from src.streaming.features_job import build_spark, read_telemetry
 
     kafka = args.input == "kafka"
-    spark = build_spark("score_job", with_kafka=kafka)
+    spark = build_spark("score_job", with_kafka=kafka, master=args.master,
+                        shuffle_partitions=args.shuffle_partitions)
     spark.sparkContext.setLogLevel("ERROR")
     if kafka:
         telemetry, what = read_telemetry(spark), S.TOPIC_SMD
     else:
-        telemetry, names = read_files(spark, args.machines)
+        telemetry, names = read_files(spark, args.machines, args.files_per_trigger)
         what = f"{len(names)} machine files ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"
 
     stats: dict[int, tuple[int, int, int]] = {}

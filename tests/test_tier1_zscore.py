@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 import numpy as np
 import pyarrow as pa
@@ -8,6 +8,7 @@ import pytest
 
 from contracts import schemas as S
 from src.detection import tier1_zscore as T
+from src.streaming import score_job as SJ
 
 N_TRAIN, N_TEST = 200, 50                 # rows (minutes) per machine -> 40 train + 10 test windows
 BASE_US = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()) * 1_000_000
@@ -135,8 +136,9 @@ def test_scores_written(result, repo):
 
 
 def test_baselines_file_matches_stream_contract(result, repo):
-    path = repo / "models/tier1_smd/baselines.parquet"
-    assert [p.name for p in path.parent.iterdir()] == ["baselines.parquet"]      # one file, nothing else
+    path = repo / "models/tier1_smd/baselines_v1.parquet"
+    assert [p.name for p in path.parent.iterdir()] == ["baselines_v1.parquet"]   # one file, nothing else
+    assert path.name == SJ.TIER1_PATH.name                                       # what score_job --tier1 v1 reads
     table = pq.read_table(path)
     assert table.schema.names == ["entity_id", "metric", "median", "mad"]
     assert pa.types.is_string(table.schema.field("entity_id").type) and pa.types.is_float64(table.schema.field("mad").type)

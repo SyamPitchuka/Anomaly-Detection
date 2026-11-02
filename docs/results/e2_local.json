@@ -1,0 +1,261 @@
+{
+ "meta": {
+  "repeats": 2,
+  "files_per_trigger": 8,
+  "min_free_gb": 1.0,
+  "cpu_count": 12,
+  "ram_gb": 15.63388442993164,
+  "host": "Windows, Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "date": "2026-11-01",
+  "machines": 28,
+  "records": 1416825,
+  "batches": 4,
+  "note": "run 2 of local[8] did not complete: the whole experiment was stopped by the host for low memory during that run, so local[8] has one run, stopped by the 1 GB guard"
+ },
+ "runs": {
+  "1": [
+   {
+    "status": "ok",
+    "wall_s": 331.7155261999869,
+    "batch_s": 301.333,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 4701.858077276634,
+    "peak_state": 28,
+    "free_before_mb": 4412.35546875,
+    "peak_rss_mb": 1584.01953125,
+    "min_free_mb": 2156.97265625,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 388743,
+      "ms": 115963,
+      "state": 8
+     },
+     {
+      "batch": 1,
+      "rows": 389201,
+      "ms": 69611,
+      "state": 16
+     },
+     {
+      "batch": 2,
+      "rows": 409186,
+      "ms": 66649,
+      "state": 24
+     },
+     {
+      "batch": 3,
+      "rows": 229695,
+      "ms": 49110,
+      "state": 28
+     }
+    ]
+   },
+   {
+    "status": "ok",
+    "wall_s": 227.56205979999504,
+    "batch_s": 202.117,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 7009.924944462861,
+    "peak_state": 28,
+    "free_before_mb": 3216.8515625,
+    "peak_rss_mb": 1556.375,
+    "min_free_mb": 3216.8515625,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 388743,
+      "ms": 73296,
+      "state": 8
+     },
+     {
+      "batch": 1,
+      "rows": 389201,
+      "ms": 50711,
+      "state": 16
+     },
+     {
+      "batch": 2,
+      "rows": 409186,
+      "ms": 45325,
+      "state": 24
+     },
+     {
+      "batch": 3,
+      "rows": 229695,
+      "ms": 32785,
+      "state": 28
+     }
+    ]
+   }
+  ],
+  "2": [
+   {
+    "status": "ok",
+    "wall_s": 351.7275166999898,
+    "batch_s": 319.48,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 4434.784650056341,
+    "peak_state": 28,
+    "free_before_mb": 4597.9453125,
+    "peak_rss_mb": 1890.67578125,
+    "min_free_mb": 2956.4921875,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 388743,
+      "ms": 111998,
+      "state": 8
+     },
+     {
+      "batch": 1,
+      "rows": 389201,
+      "ms": 101676,
+      "state": 16
+     },
+     {
+      "batch": 2,
+      "rows": 409186,
+      "ms": 60116,
+      "state": 24
+     },
+     {
+      "batch": 3,
+      "rows": 229695,
+      "ms": 45690,
+      "state": 28
+     }
+    ]
+   },
+   {
+    "status": "ok",
+    "wall_s": 195.02745470000082,
+    "batch_s": 169.928,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 8337.796007720917,
+    "peak_state": 28,
+    "free_before_mb": 4848.67578125,
+    "peak_rss_mb": 2185.31640625,
+    "min_free_mb": 2559.1171875,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 388743,
+      "ms": 69933,
+      "state": 8
+     },
+     {
+      "batch": 1,
+      "rows": 389201,
+      "ms": 37440,
+      "state": 16
+     },
+     {
+      "batch": 2,
+      "rows": 409186,
+      "ms": 36981,
+      "state": 24
+     },
+     {
+      "batch": 3,
+      "rows": 229695,
+      "ms": 25574,
+      "state": 28
+     }
+    ]
+   }
+  ],
+  "4": [
+   {
+    "status": "ok",
+    "wall_s": 296.37609760000487,
+    "batch_s": 262.265,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 5402.26488475397,
+    "peak_state": 28,
+    "free_before_mb": 5123.30078125,
+    "peak_rss_mb": 2564.30078125,
+    "min_free_mb": 2154.3125,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 388743,
+      "ms": 138358,
+      "state": 8
+     },
+     {
+      "batch": 1,
+      "rows": 389201,
+      "ms": 50430,
+      "state": 16
+     },
+     {
+      "batch": 2,
+      "rows": 409186,
+      "ms": 44534,
+      "state": 24
+     },
+     {
+      "batch": 3,
+      "rows": 229695,
+      "ms": 28943,
+      "state": 28
+     }
+    ]
+   },
+   {
+    "status": "ok",
+    "wall_s": 205.07895269998698,
+    "batch_s": 180.091,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 7867.272656601384,
+    "peak_state": 28,
+    "free_before_mb": 5082.30078125,
+    "peak_rss_mb": 2769.890625,
+    "min_free_mb": 2559.83984375,
+    "batches_detail": [
+     {
+      "batch": 0,
+      "rows": 388743,
+      "ms": 67051,
+      "state": 8
+     },
+     {
+      "batch": 1,
+      "rows": 389201,
+      "ms": 54460,
+      "state": 16
+     },
+     {
+      "batch": 2,
+      "rows": 409186,
+      "ms": 32396,
+      "state": 24
+     },
+     {
+      "batch": 3,
+      "rows": 229695,
+      "ms": 26184,
+      "state": 28
+     }
+    ]
+   }
+  ],
+  "8": [
+   {
+    "status": "out of memory",
+    "wall_s": 92.32609749998664,
+    "batches_done": 0,
+    "free_before_mb": 4749.0625,
+    "peak_rss_mb": 3944.75,
+    "min_free_mb": 1022.38671875
+   }
+  ]
+ }
+}

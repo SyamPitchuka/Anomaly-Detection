@@ -32,7 +32,9 @@ Steps:
 7. Test windows go to data/scores/source=smd with the scores-layer columns. tier1_score/tier1_flag come
    from data/scores_tier1/source=smd and ae_score/ae_flag/top_metrics from data/scores_ae/source=smd,
    joined on (entity_id, window_start) when those folders exist, else null.
-   is_anomaly = coalesce(ae_flag, false) OR coalesce(tier1_flag, false).
+   is_anomaly = coalesce(ae_flag, false): the autoencoder alone raises the alarm, as in
+   src/streaming/score_job.py (see docs/results/tier1_stream.md). tier1_score/tier1_flag are kept in the
+   output as a baseline and explainer only; they never change is_anomaly.
 8. For Tier 2, Tier 2b and the autoencoder (if present), the same report as autoencoder.py: composite F1,
    faults caught, alarm precision, false alarms per machine per day, median delay, PR-AUC of the score,
    point and point-adjusted event precision/recall/F1, per machine on time-ordered test windows and overall.
@@ -239,18 +241,35 @@ def fit_pca(train: DataFrame, metrics: list[str], variance: float = PCA_VARIANCE
     return pca_pipeline(metrics, k).fit(train), k, cumulative.tolist()
 
 
+def kmeans_distance(Z: np.ndarray, centers: np.ndarray, cluster: np.ndarray | None = None) -> np.ndarray:
+    """tier2_score: Euclidean distance of each standardised window to its centroid (cluster = the KMeans
+    prediction; None -> the nearest centroid, which is what KMeansModel predicts)."""
+    if cluster is None:
+        cluster = ((Z[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return np.sqrt(((Z - centers[cluster]) ** 2).sum(axis=1))
+
+
+def pca_projector(pc: np.ndarray) -> np.ndarray:
+    """P P^T for the n_metrics x k principal components (orthonormal columns)."""
+    return pc @ pc.T
+
+
+def pca_error(Z: np.ndarray, projector: np.ndarray) -> np.ndarray:
+    """pca_score: mean squared error of x - x P P^T over the metrics."""
+    return ((Z - Z @ projector) ** 2).mean(axis=1)
+
+
 def score_windows(z: DataFrame, kmeans: PipelineModel, pca: PipelineModel, metrics: list[str]) -> DataFrame:
     """Adds tier2_score (distance to the nearest centroid) and pca_score (mean squared reconstruction
     error) to z; the numpy work runs in mapInPandas."""
     centers = np.asarray(kmeans.stages[-1].clusterCenters())
-    pc = pca.stages[-1].pc.toArray()          # n_metrics x k, orthonormal columns
-    projector = pc @ pc.T
+    projector = pca_projector(pca.stages[-1].pc.toArray())
 
     def _scores(batches):
         for pdf in batches:
             Z = pdf[metrics].to_numpy(dtype=np.float64)
-            tier2 = np.sqrt(((Z - centers[pdf["cluster"].to_numpy()]) ** 2).sum(axis=1))
-            pca_err = ((Z - Z @ projector) ** 2).mean(axis=1)
+            tier2 = kmeans_distance(Z, centers, pdf["cluster"].to_numpy())
+            pca_err = pca_error(Z, projector)
             yield pd.DataFrame({"entity_id": pdf["entity_id"], "ws_us": pdf["ws_us"],
                                 "tier2_score": tier2, "pca_score": pca_err})
 
@@ -296,7 +315,7 @@ def attach_other_tiers(spark: SparkSession, test: DataFrame, root: Path, source:
             test = test.select("*", *[F.lit(None).cast(t).alias(c) for c, t in cols.items()])
         else:
             test = test.join(other, KEYS, "left")
-    test = test.withColumn("is_anomaly", F.coalesce("ae_flag", F.lit(False)) | F.coalesce("tier1_flag", F.lit(False)))
+    test = test.withColumn("is_anomaly", F.coalesce("ae_flag", F.lit(False)))   # AE only; Tier 1 never alarms
     return test, found
 
 

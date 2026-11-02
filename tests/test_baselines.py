@@ -7,6 +7,7 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import pytest
 from pyspark.ml import PipelineModel
+from pyspark.sql import functions as F
 
 from contracts import schemas as S
 from src.detection import baselines as M
@@ -153,10 +154,43 @@ def test_scores_layer(result, repo):
     assert table["tier1_score"].isna().all() and table["tier1_flag"].isna().all()   # no scores_tier1 folder
     m11 = table["entity_id"] == "machine-1-1"
     assert table.loc[m11, "ae_score"].notna().all() and table.loc[~m11, "ae_score"].isna().all()
-    # is_anomaly = ae_flag OR tier1_flag, nulls as false: only machine-1-1's first test window
+    # is_anomaly = coalesce(ae_flag, false) (AE only): only machine-1-1's first test window
     assert table["is_anomaly"].sum() == 1
     assert bool(table.loc[m11, "is_anomaly"].iloc[0])
     assert table.loc[m11, "top_metrics"].iloc[0].tolist() == ["m00", "m01", "m02"]
+
+
+def test_tier1_flag_never_raises_alarm(spark, tmp_path):
+    """is_anomaly is AE only: tier1_flag true with ae_flag false (or null) gives is_anomaly false."""
+    schema = S.arrow_schema("scores")
+    start = np.array([BASE_US, BASE_US + WINDOW_US, BASE_US + 2 * WINDOW_US], dtype=np.int64)
+    n = len(start)
+
+    def scores(cols: dict) -> pa.Table:
+        base = {"entity_id": pa.array(["machine-1-1"] * n, type=pa.string()),
+                "window_start": pa.array(start).cast(schema.field("window_start").type),
+                "window_end": pa.array(start + WINDOW_US).cast(schema.field("window_end").type)}
+        base.update(cols)
+        return pa.Table.from_arrays([base.get(f.name, pa.nulls(n, type=f.type)) for f in schema], schema=schema)
+
+    tier1 = tmp_path / M.SCORES_TIER1_DIR / "source=smd"
+    tier1.mkdir(parents=True)
+    pq.write_table(scores({"tier1_score": pa.array([9.0, 9.0, 0.1]),
+                           "tier1_flag": pa.array([True, True, False])}), tier1 / "scores.parquet")
+    ae = tmp_path / M.SCORES_AE_DIR / "source=smd"
+    ae.mkdir(parents=True)   # AE row only for windows 0 and 2: window 1 has ae_flag null
+    pq.write_table(scores({"ae_score": pa.array([0.1, None, 5.0], type=pa.float64()),
+                           "ae_flag": pa.array([False, None, True], type=pa.bool_())}).take([0, 2]),
+                   ae / "scores.parquet")
+
+    test = spark.createDataFrame([("machine-1-1", int(ws)) for ws in start], "entity_id string, ws_us long")
+    test = test.withColumn("window_start", (F.col("ws_us") / 1_000_000).cast("timestamp"))
+    out, found = M.attach_other_tiers(spark, test, tmp_path, "smd")
+    assert found == {M.SCORES_TIER1_DIR: True, M.SCORES_AE_DIR: True}
+    pdf = out.orderBy("ws_us").toPandas()
+    assert pdf["tier1_flag"].tolist() == [True, True, False]       # Tier 1 kept in the output
+    assert pdf["tier1_score"].tolist() == [9.0, 9.0, 0.1]
+    assert pdf["is_anomaly"].tolist() == [False, False, True]      # tier1 true + ae false/null -> no alarm
 
 
 # ---------------------------------------------------------------- --recenter with a lasting level shift
