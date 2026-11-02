@@ -1,0 +1,371 @@
+{
+  "experiment": "E1",
+  "source": "smd",
+  "input": "data/scores/source=smd",
+  "test_windows": 141708,
+  "machines": 28,
+  "pca_threshold": 1.0817210667867942,
+  "is_anomaly_rule": "ae_flag (contract rev C)",
+  "detectors": [
+    {
+      "detector": "Tier 1 robust z-score",
+      "key": "tier1",
+      "composite_f1": 0.09935521149588417,
+      "faults_caught": 323,
+      "faults": 326,
+      "event_recall": 0.99079754601227,
+      "alarm_precision": 0.052299869295088716,
+      "false_alarms_per_machine_day": 215.14438140401387,
+      "median_delay_min": 0.0,
+      "pr_auc": 0.13619755779693749,
+      "point_precision": 0.052299869295088716,
+      "point_recall": 0.951310861423221,
+      "point_f1": 0.09914886756107702,
+      "event_precision": 0.05478767098824958,
+      "event_recall_adjusted": 0.9991858003582479,
+      "event_f1": 0.10387939426259343,
+      "windows_flagged": 111702,
+      "windows": 141708
+    },
+    {
+      "detector": "Tier 2 KMeans (recenter 24)",
+      "key": "kmeans",
+      "composite_f1": 0.595855984388196,
+      "faults_caught": 215,
+      "faults": 326,
+      "event_recall": 0.6595092024539877,
+      "alarm_precision": 0.5434083601286174,
+      "false_alarms_per_machine_day": 3.4631213481243117,
+      "median_delay_min": 0.0,
+      "pr_auc": 0.35320726252191437,
+      "point_precision": 0.5434083601286174,
+      "point_recall": 0.3302393746946751,
+      "point_f1": 0.4108173807353388,
+      "event_precision": 0.7574377224199288,
+      "event_recall_adjusted": 0.8664712587526462,
+      "event_f1": 0.8082940908400426,
+      "windows_flagged": 3732,
+      "windows": 141708
+    },
+    {
+      "detector": "Tier 2b PCA (recenter 24)",
+      "key": "pca",
+      "composite_f1": 0.5542326157568286,
+      "faults_caught": 183,
+      "faults": 326,
+      "event_recall": 0.5613496932515337,
+      "alarm_precision": 0.5472937467157121,
+      "false_alarms_per_machine_day": 3.5017359640951815,
+      "median_delay_min": 0.0,
+      "pr_auc": 0.3524365742817071,
+      "point_precision": 0.5472937467157121,
+      "point_recall": 0.33919557075394885,
+      "point_f1": 0.41881974464662713,
+      "event_precision": 0.7272007599746675,
+      "event_recall_adjusted": 0.747923790913532,
+      "event_f1": 0.7374167134944207,
+      "windows_flagged": 3806,
+      "windows": 141708
+    },
+    {
+      "detector": "Tier 3 AE v2",
+      "key": "ae_v2",
+      "composite_f1": 0.5231549486639478,
+      "faults_caught": 179,
+      "faults": 326,
+      "event_recall": 0.549079754601227,
+      "alarm_precision": 0.4995678478824546,
+      "false_alarms_per_machine_day": 1.1767296130070284,
+      "median_delay_min": 0.0,
+      "pr_auc": 0.35507733247944834,
+      "point_precision": 0.4995678478824546,
+      "point_recall": 0.09412147858654943,
+      "point_f1": 0.15839956152370513,
+      "event_precision": 0.8912267518316739,
+      "event_recall_adjusted": 0.7725126200944472,
+      "event_f1": 0.8276343335659456,
+      "windows_flagged": 1157,
+      "windows": 141708
+    },
+    {
+      "detector": "Final rule: is_anomaly",
+      "key": "is_anomaly",
+      "composite_f1": 0.5231549486639478,
+      "faults_caught": 179,
+      "faults": 326,
+      "event_recall": 0.549079754601227,
+      "alarm_precision": 0.4995678478824546,
+      "false_alarms_per_machine_day": 1.1767296130070284,
+      "median_delay_min": 0.0,
+      "pr_auc": 0.35507733247944834,
+      "point_precision": 0.4995678478824546,
+      "point_recall": 0.09412147858654943,
+      "point_f1": 0.15839956152370513,
+      "event_precision": 0.8912267518316739,
+      "event_recall_adjusted": 0.7725126200944472,
+      "event_f1": 0.8276343335659456,
+      "windows_flagged": 1157,
+      "windows": 141708
+    }
+  ],
+  "per_machine_composite_f1": [
+    {
+      "machine": "machine-1-1",
+      "tier1": 0.20777735417460924,
+      "kmeans": 0.7883211678832116,
+      "pca": 0.8971631205673758,
+      "ae_v2": 0.6611111111111111,
+      "is_anomaly": 0.6611111111111111
+    },
+    {
+      "machine": "machine-1-2",
+      "tier1": 0.07222914072229142,
+      "kmeans": 0.7272727272727272,
+      "pca": 0.467005076142132,
+      "ae_v2": 0.48648648648648646,
+      "is_anomaly": 0.48648648648648646
+    },
+    {
+      "machine": "machine-1-3",
+      "tier1": 0.07080366225839267,
+      "kmeans": 0.33962264150943394,
+      "pca": 0.23622047244094488,
+      "ae_v2": 0.2736842105263158,
+      "is_anomaly": 0.2736842105263158
+    },
+    {
+      "machine": "machine-1-4",
+      "tier1": 0.06251276813074567,
+      "kmeans": 0.4433497536945813,
+      "pca": 0.2777777777777778,
+      "ae_v2": 0.3835616438356164,
+      "is_anomaly": 0.3835616438356164
+    },
+    {
+      "machine": "machine-1-5",
+      "tier1": 0.015590894917368259,
+      "kmeans": 0.3392857142857143,
+      "pca": 0.24844720496894412,
+      "ae_v2": 0.49557522123893805,
+      "is_anomaly": 0.49557522123893805
+    },
+    {
+      "machine": "machine-1-6",
+      "tier1": 0.2886876109266427,
+      "kmeans": 0.6442166910688141,
+      "pca": 0.7539347408829175,
+      "ae_v2": 0.5428109854604201,
+      "is_anomaly": 0.5428109854604201
+    },
+    {
+      "machine": "machine-1-7",
+      "tier1": 0.26876790830945557,
+      "kmeans": 0.7407407407407408,
+      "pca": 0.64797507788162,
+      "ae_v2": 0.6881720430107527,
+      "is_anomaly": 0.6881720430107527
+    },
+    {
+      "machine": "machine-1-8",
+      "tier1": 0.06818181818181818,
+      "kmeans": 0.5145228215767635,
+      "pca": 0.365546218487395,
+      "ae_v2": 0.3972602739726027,
+      "is_anomaly": 0.3972602739726027
+    },
+    {
+      "machine": "machine-2-1",
+      "tier1": 0.11403746945424925,
+      "kmeans": 0.7301173402868318,
+      "pca": 0.7262079062957542,
+      "ae_v2": 0.6737967914438503,
+      "is_anomaly": 0.6737967914438503
+    },
+    {
+      "machine": "machine-2-2",
+      "tier1": 0.2835867204467887,
+      "kmeans": 0.5507246376811594,
+      "pca": 0.3711340206185567,
+      "ae_v2": 0.39086294416243655,
+      "is_anomaly": 0.39086294416243655
+    },
+    {
+      "machine": "machine-2-3",
+      "tier1": 0.030056664203005665,
+      "kmeans": 0.8518518518518519,
+      "pca": 0.8402154398563734,
+      "ae_v2": 0.7741935483870969,
+      "is_anomaly": 0.7741935483870969
+    },
+    {
+      "machine": "machine-2-4",
+      "tier1": 0.20410628019323668,
+      "kmeans": 0.18076923076923077,
+      "pca": 0.09505334626576141,
+      "ae_v2": 0.5943396226415094,
+      "is_anomaly": 0.5943396226415094
+    },
+    {
+      "machine": "machine-2-5",
+      "tier1": 0.21621621621621626,
+      "kmeans": 0.8847852268165395,
+      "pca": 0.9195402298850575,
+      "ae_v2": 0.8780487804878048,
+      "is_anomaly": 0.8780487804878048
+    },
+    {
+      "machine": "machine-2-6",
+      "tier1": 0.037081821846029824,
+      "kmeans": 0.523038605230386,
+      "pca": 0.5617021276595745,
+      "ae_v2": 0.588235294117647,
+      "is_anomaly": 0.588235294117647
+    },
+    {
+      "machine": "machine-2-7",
+      "tier1": 0.07448059584476677,
+      "kmeans": 0.395778364116095,
+      "pca": 0.23549488054607506,
+      "ae_v2": 0.5,
+      "is_anomaly": 0.5
+    },
+    {
+      "machine": "machine-2-8",
+      "tier1": 0.015684410646387835,
+      "kmeans": 0.5818181818181819,
+      "pca": 0.7032967032967034,
+      "ae_v2": 0.4782608695652174,
+      "is_anomaly": 0.4782608695652174
+    },
+    {
+      "machine": "machine-2-9",
+      "tier1": 0.11991938192811555,
+      "kmeans": 0.7857142857142858,
+      "pca": 0.7821656050955414,
+      "ae_v2": 0.5614973262032086,
+      "is_anomaly": 0.5614973262032086
+    },
+    {
+      "machine": "machine-3-1",
+      "tier1": 0.025248344370860928,
+      "kmeans": 0.8392857142857142,
+      "pca": 0.7250755287009063,
+      "ae_v2": 0.7636363636363637,
+      "is_anomaly": 0.7636363636363637
+    },
+    {
+      "machine": "machine-3-10",
+      "tier1": 0.09362460989745876,
+      "kmeans": 0.3356643356643356,
+      "pca": 0.2616822429906543,
+      "ae_v2": 0.29268292682926833,
+      "is_anomaly": 0.29268292682926833
+    },
+    {
+      "machine": "machine-3-11",
+      "tier1": 0.027263875365141188,
+      "kmeans": 0.1851851851851852,
+      "pca": 0.23076923076923078,
+      "ae_v2": 0.5084745762711864,
+      "is_anomaly": 0.5084745762711864
+    },
+    {
+      "machine": "machine-3-2",
+      "tier1": 0.09215291750503017,
+      "kmeans": 0.625,
+      "pca": 0.33333333333333337,
+      "ae_v2": 0.5,
+      "is_anomaly": 0.5
+    },
+    {
+      "machine": "machine-3-3",
+      "tier1": 0.07539811504712382,
+      "kmeans": 0.7057182705718271,
+      "pca": 0.30352303523035234,
+      "ae_v2": 0.30939226519337015,
+      "is_anomaly": 0.30939226519337015
+    },
+    {
+      "machine": "machine-3-4",
+      "tier1": 0.08639587362991619,
+      "kmeans": 0.6982248520710059,
+      "pca": 0.7518796992481204,
+      "ae_v2": 0.3037974683544304,
+      "is_anomaly": 0.3037974683544304
+    },
+    {
+      "machine": "machine-3-5",
+      "tier1": 0.0411417103356004,
+      "kmeans": 0.30806845965770163,
+      "pca": 0.2834355828220859,
+      "ae_v2": 0.34782608695652173,
+      "is_anomaly": 0.34782608695652173
+    },
+    {
+      "machine": "machine-3-6",
+      "tier1": 0.09713282621416032,
+      "kmeans": 0.6984924623115578,
+      "pca": 0.7000000000000001,
+      "ae_v2": 0.7276302851524089,
+      "is_anomaly": 0.7276302851524089
+    },
+    {
+      "machine": "machine-3-7",
+      "tier1": 0.03540240736370074,
+      "kmeans": 0.7037037037037037,
+      "pca": 0.7487684729064039,
+      "ae_v2": 0.4388185654008439,
+      "is_anomaly": 0.4388185654008439
+    },
+    {
+      "machine": "machine-3-8",
+      "tier1": 0.09595872742906278,
+      "kmeans": 0.47293447293447294,
+      "pca": 0.46582278481012657,
+      "ae_v2": 0.4028436018957346,
+      "is_anomaly": 0.4028436018957346
+    },
+    {
+      "machine": "machine-3-9",
+      "tier1": 0.0243048403707518,
+      "kmeans": 0.6956521739130436,
+      "pca": 0.6050420168067226,
+      "ae_v2": 0.6956521739130436,
+      "is_anomaly": 0.6956521739130436
+    }
+  ],
+  "reference_rows": [
+    {
+      "detector": "Tier 2 KMeans, recenter 0",
+      "metric": "composite F1",
+      "value": 0.266,
+      "faults_caught": "225/326",
+      "false_alarms_per_machine_day": 31.47,
+      "source": "PR #9"
+    },
+    {
+      "detector": "Tier 2b PCA, recenter 0",
+      "metric": "composite F1",
+      "value": 0.246,
+      "faults_caught": "195/326",
+      "false_alarms_per_machine_day": 30.15,
+      "source": "PR #9"
+    },
+    {
+      "detector": "Tier 3 AE v1",
+      "metric": "point-adjusted event F1 (generous)",
+      "value": 0.36,
+      "faults_caught": "222/326",
+      "false_alarms_per_machine_day": 36.98,
+      "source": "PR #6 (composite F1 0.236 in the v1 rerun, docs/ae_ablation.md)"
+    },
+    {
+      "detector": "Tier 1 v2, best setting (k = 3, t = 6)",
+      "metric": "composite F1",
+      "value": 0.338,
+      "faults_caught": "150/326",
+      "false_alarms_per_machine_day": 9.4,
+      "source": "PR #15, docs/results/tier1_stream.md (not selected: above 2 false alarms per machine per day)"
+    }
+  ]
+}
