@@ -6,9 +6,12 @@ Run from the repo root:
     python src/streaming/score_job.py --input files --machines 2 --once   # replay data/raw/source=smd
     python src/streaming/score_job.py --input files --once --reset        # wipe output + checkpoint first
     python src/streaming/score_job.py --input files --once --tier1 v1     # also fill tier1_score/tier1_flag
+    python src/streaming/score_job.py --input files --once --master local[2] --shuffle-partitions 4
+    python src/streaming/score_job.py --input files --once --files-per-trigger 8   # 8 machines per batch
 
 Input: Kafka topic telemetry.smd parsed with contracts.schemas.TELEMETRY_JSON_DDL, or a readStream of the
-raw-layer Parquet files (one file per trigger, fake.parquet skipped). 10-minute watermark on event_time.
+raw-layer Parquet files (one file per trigger, or --files-per-trigger N; fake.parquet skipped). 10-minute
+watermark on event_time.
 
 Windows and scoring happen in one applyInPandasWithState keyed by entity_id (GroupStateTimeout.NoTimeout).
 The windows are built inside it rather than by a Spark window aggregation for two reasons: Spark 3.5 does
@@ -169,8 +172,9 @@ def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH, tier1: str
     """tier1: 'off' or 'v1' (None -> tier1_mode()). Tier 1 baselines are loaded only for 'v1'."""
     import torch
     tier1 = tier1_mode() if tier1 is None else tier1
-    torch.set_num_threads(1)  # several Python workers already run in parallel
-    models = {"ae": ae_bundle(*AE.load_model(ae_dir)), "tier1": load_tier1_baselines(tier1_path) if tier1 == "v1" else None,
+    torch.set_num_threads(1)  # runs on each worker: several Python workers already run in parallel
+    models = {"ae": ae_bundle(*AE.load_model(ae_dir)),
+              "tier1": load_tier1_baselines(tier1_path) if tier1 == "v1" else None,
               "baselines_module": None, "baselines": None}
     if BASELINES_MODULE.exists():
         from src.detection import stream_baselines
@@ -338,7 +342,7 @@ def score_group(key, pdf_iter, state):
 
 # ---------------------------------------------------------------- Spark
 
-def read_files(spark, machines: int | None):
+def read_files(spark, machines: int | None, files_per_trigger: int = 1):
     raw_dir = ROOT / S.PATHS["raw"] / f"source={SOURCE}"
     files = sorted(p for p in raw_dir.glob("*.parquet") if p.name not in AE.SKIP_FILES)
     if machines:
@@ -346,7 +350,8 @@ def read_files(spark, machines: int | None):
     if not files:
         raise FileNotFoundError(f"no machine Parquet files under {raw_dir}")
     glob = "{" + ",".join(p.name for p in files) + "}"
-    return (spark.readStream.schema(RAW_DDL).option("maxFilesPerTrigger", 1).option("pathGlobFilter", glob)
+    return (spark.readStream.schema(RAW_DDL).option("maxFilesPerTrigger", files_per_trigger)
+            .option("pathGlobFilter", glob)
             .parquet(raw_dir.as_posix()).withWatermark("event_time", WATERMARK)), [p.stem for p in files]
 
 
@@ -399,6 +404,11 @@ def main(argv=None) -> int:
     parser.add_argument("--tier1", choices=TIER1_MODES, default="off",
                         help="off (default): tier1 columns null; v1: robust z vs train median from "
                              "models/tier1_smd/baselines_v1.parquet. is_anomaly stays AE only either way")
+    parser.add_argument("--files-per-trigger", type=int, default=1,
+                        help="files input: machine files per micro-batch (maxFilesPerTrigger, default 1)")
+    parser.add_argument("--master", default="local[*]", help="Spark master, e.g. local[4] (default local[*])")
+    parser.add_argument("--shuffle-partitions", type=int, default=4,
+                        help="spark.sql.shuffle.partitions (default 4)")
     args = parser.parse_args(argv)
 
     if not (AE_DIR / "model.pt").exists():
@@ -422,12 +432,13 @@ def main(argv=None) -> int:
     from src.streaming.features_job import build_spark, read_telemetry
 
     kafka = args.input == "kafka"
-    spark = build_spark("score_job", with_kafka=kafka)
+    spark = build_spark("score_job", with_kafka=kafka, master=args.master,
+                        shuffle_partitions=args.shuffle_partitions)
     spark.sparkContext.setLogLevel("ERROR")
     if kafka:
         telemetry, what = read_telemetry(spark), S.TOPIC_SMD
     else:
-        telemetry, names = read_files(spark, args.machines)
+        telemetry, names = read_files(spark, args.machines, args.files_per_trigger)
         what = f"{len(names)} machine files ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"
 
     stats: dict[int, tuple[int, int, int]] = {}

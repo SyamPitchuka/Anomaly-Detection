@@ -1,0 +1,59 @@
+{
+ "meta": {
+  "title": "Before the thread fix: 8 files per trigger, run 1 only",
+  "explanation": "In these runs only PyTorch was held to one thread per worker (`torch.set_num_threads(1)` in the model loader); the OpenMP, MKL and OpenBLAS thread pools that numpy and torch set up were still sized to the 12 hardware threads, so `local[n]` started n Python workers that could each spawn several math threads. As n grew these threads competed for the same 12 hardware threads and caches (oversubscription), while every worker also held its own copy of PyTorch and the models, so throughput *fell* from 6,280 records/s at 1 core to 3,190 at 8 (and the laptop was already short of memory, which made it worse). The main result below sets `OMP_NUM_THREADS`, `MKL_NUM_THREADS` and `OPENBLAS_NUM_THREADS` to 1 before the SparkSession starts, so every local-mode worker inherits one math thread.",
+  "machines": 28,
+  "records": 1416825,
+  "files_per_trigger": 8,
+  "repeats": 1,
+  "batches": 4,
+  "date": "2026-11-01",
+  "note": "first of two planned runs; run 2 was slowed by memory pressure and then stopped, so only run 1 is kept"
+ },
+ "runs": {
+  "1": [
+   {
+    "status": "ok",
+    "wall_s": 268.0,
+    "batch_s": 225.6,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 6280.252659574468,
+    "peak_state": 28
+   }
+  ],
+  "2": [
+   {
+    "status": "ok",
+    "wall_s": 292.7,
+    "batch_s": 258.9,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 5472.4797219003485,
+    "peak_state": 28
+   }
+  ],
+  "4": [
+   {
+    "status": "ok",
+    "wall_s": 336.9,
+    "batch_s": 307.3,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 4610.559713634884,
+    "peak_state": 28
+   }
+  ],
+  "8": [
+   {
+    "status": "ok",
+    "wall_s": 479.8,
+    "batch_s": 444.2,
+    "records": 1416825,
+    "batches": 4,
+    "rps": 3189.610535794687,
+    "peak_state": 28
+   }
+  ]
+ }
+}
