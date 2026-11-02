@@ -31,8 +31,10 @@ can later be fed from the `anomalies` topic.
 
 - **Late or out-of-order alerts:** none are handled incrementally. Every run recomputes all incidents from all alerts, so
   `incident_id` is always consistent with the data. Incidents are therefore not live, only as fresh as the last run.
-- **Alert flood:** `is_anomaly = ae_flag OR tier1_flag`. If Tier 1 flags most windows, incidents merge into a few long
-  runs with a null `max_score`. Check the share of alert windows before relying on the incident list.
+- **Alert flood:** `is_anomaly = ae_flag` (contract rev C). Tier 1 is not part of `is_anomaly`: as an alarm it flagged
+  79 % of SMD test windows (215 false alarms per machine per day, see `docs/results/tier1_stream.md`), which merged
+  incidents into a few long runs. Alerts now come from the autoencoder alone (about 1.2 false alarms per machine per
+  day on SMD); still check the share of alert windows before relying on the incident list.
 
 ## Worked examples
 
