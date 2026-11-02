@@ -1,8 +1,8 @@
 """Tier 1 v1 stream vs batch parity, and the alarm metrics with Tier 1 on vs off.
 
 Run from the repo root after
-    python src/detection/tier1_zscore.py          # batch Tier 1 -> data/scores_tier1 (+ baselines; rename to
-                                                  # models/tier1_smd/baselines_v1.parquet for the stream)
+    python src/detection/tier1_zscore.py          # batch Tier 1 -> data/scores_tier1
+                                                  # + models/tier1_smd/baselines_v1.parquet (for --tier1 v1)
     python src/detection/autoencoder.py           # batch AE v2 -> data/scores_ae
     python src/streaming/score_job.py --input files --once --reset --tier1 v1
     python experiments/tier1_compare.py

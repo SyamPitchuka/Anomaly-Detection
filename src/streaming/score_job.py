@@ -419,8 +419,7 @@ def main(argv=None) -> int:
             shutil.rmtree(d, ignore_errors=True)
         print("reset: removed stream output and checkpoint", flush=True)
     if args.tier1 == "v1" and not TIER1_PATH.exists():
-        print(f"FAIL --tier1 v1 needs {TIER1_PATH.relative_to(ROOT).as_posix()}: run src/detection/tier1_zscore.py "
-              "and rename its baselines.parquet to baselines_v1.parquet")
+        print(f"FAIL --tier1 v1 needs {TIER1_PATH.relative_to(ROOT).as_posix()}: run src/detection/tier1_zscore.py")
         return 1
     os.environ[TIER1_ENV] = args.tier1   # before the SparkSession, so the Python workers inherit it
     print(f"tier1: {args.tier1} (is_anomaly = ae_flag only)", flush=True)

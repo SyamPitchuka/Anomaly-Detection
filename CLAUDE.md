@@ -3,7 +3,7 @@
 Project: scalable real-time anomaly detection on data-center telemetry (SMD + Alibaba v2018)
 with Kafka and Spark Structured Streaming. Report and repo due 15 Nov 2026.
 
-## Frozen contracts (revision B) – never change these without Syam's approval
+## Frozen contracts (revision C) – never change these without Syam's approval
 
 All names, paths, columns and types live in `contracts/schemas.py` and `contracts/topics.yaml`.
 **Always import from `contracts.schemas`; never retype a topic name, path or column name.**
@@ -29,7 +29,8 @@ All names, paths, columns and types live in `contracts/schemas.py` and `contract
   Tier 2 MLlib KMeans distance to centroid (`tier2_score`, `tier2_flag`);
   Tier 2b MLlib PCA reconstruction error, linear multi-metric (`pca_score`);
   Tier 3 dense autoencoder reconstruction error, non-linear multi-metric (`ae_score`, `ae_flag`).
-  `is_anomaly = ae_flag OR tier1_flag`. `top_metrics` = 3 metrics with the largest autoencoder reconstruction error.
+  `is_anomaly = ae_flag` (rev C: Tier 1 is a baseline/explainer, not part of the alarm; see
+  `docs/results/tier1_stream.md`). `top_metrics` = 3 metrics with the largest autoencoder reconstruction error.
 - Models are trained offline (Spark MLlib for KMeans and PCA, PyTorch on one node for the autoencoder) and
   saved to `models/kmeans_<source>/`, `models/pca_<source>/`, `models/ae_<source>/` (`model.pt` + `scaler.json`).
   The streaming job loads them once and scores with `mapInPandas`; models are never trained inside the stream.

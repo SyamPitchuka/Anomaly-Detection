@@ -75,8 +75,7 @@ the results were seen; a further grid (larger k or t, longer persistence) would 
 ## Reproduce
 
 ```
-python src/detection/tier1_zscore.py          # baselines + data/scores_tier1
-# rename models/tier1_smd/baselines.parquet to baselines_v1.parquet (the file --tier1 v1 reads)
+python src/detection/tier1_zscore.py          # models/tier1_smd/baselines_v1.parquet + data/scores_tier1
 python src/streaming/score_job.py --input files --once --reset --tier1 v1
 python tools/check_stream_parity.py
 python experiments/tier1_compare.py

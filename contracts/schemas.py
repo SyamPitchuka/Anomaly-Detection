@@ -1,4 +1,4 @@
-"""Frozen data contracts for Team SPARK (revision B).
+"""Frozen data contracts for Team SPARK (revision C: is_anomaly = ae_flag; revision B otherwise unchanged).
 
 This file is the master copy of Part A of the shared document.
 Do not edit without Syam's approval. Every module imports names from here.
@@ -33,9 +33,9 @@ MODELS = {
     "pca": "models/pca_<source>",         # Tier 2b, Spark MLlib PCA reconstruction error
     "ae": "models/ae_<source>",           # Tier 3, PyTorch dense autoencoder (model.pt + scaler.json)
 }
-# Window is anomalous if the autoencoder OR the robust z-score flags it.
+# Window is anomalous if the autoencoder flags it; Tier 1 is a baseline/explainer, see docs/results/tier1_stream.md.
 # top_metrics = the 3 metrics with the largest autoencoder reconstruction error.
-ANOMALY_RULE = "is_anomaly = ae_flag OR tier1_flag"
+ANOMALY_RULE = "is_anomaly = ae_flag"
 
 # Type codes used by the checks: ts = any timestamp, map_sd = map<string,double>,
 # map_ss = map<string,string>, list_s = list<string>.
