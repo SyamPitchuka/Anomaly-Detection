@@ -46,11 +46,24 @@ Output: test windows -> data/scores_stream/source=smd/batch-<id>.parquet (one fi
 replayed batch overwrites its own file), columns of contracts.schemas.LAYERS['scores'],
 is_anomaly = coalesce(ae_flag, false) (AE only). Checkpoint: checkpoints/score/source=smd.
 With --input kafka, rows with is_anomaly also go to the anomalies topic (key entity_id, value JSON).
+
+Latency side output (--input kafka only; not a contract layer, LAYERS['scores'] is unchanged): every
+emitted window of the micro-batch, train and test, -> data/latency_stream/source=smd/batch-<id>.parquet
+with entity_id, window_start, max_ingest_ts_ms (newest attrs.ingest_ts of the records in the window),
+batch_max_ingest_ts_ms (newest attrs.ingest_ts of that machine's records in the micro-batch that closed
+the window), emit_ts_ms (wall clock once the batch's scores file and anomalies are written) and batch_id.
+The state keeps the newest ingest time per open window for this. src/streaming/latency_report.py reads it.
+Each query progress is also appended to data/latency_stream/progress.jsonl.
+
+Stopping without Ctrl+C (for scripted runs): --max-seconds S stops the query after S wall seconds,
+--idle-stop S once rows were seen and no micro-batch had input rows for S seconds.
 """
 import argparse
 import os
+import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 # On Windows, Spark must start workers with this same venv Python (as in tools/check_spark_kafka.py).
@@ -95,6 +108,12 @@ TIER1_Z = 3.0
 BASELINES_MODULE = ROOT / "src" / "detection" / "stream_baselines.py"
 OUTPUT_DIR = ROOT / "data" / "scores_stream" / f"source={SOURCE}"
 CHECKPOINT_DIR = ROOT / "checkpoints" / "score" / f"source={SOURCE}"
+LATENCY_ROOT = ROOT / "data" / "latency_stream"
+LATENCY_DIR = LATENCY_ROOT / f"source={SOURCE}"
+PROGRESS_LOG = LATENCY_ROOT / "progress.jsonl"
+LATENCY_SCHEMA = pa.schema([("entity_id", pa.string()), ("window_start", pa.timestamp("us", tz="UTC")),
+                            ("max_ingest_ts_ms", pa.int64()), ("batch_max_ingest_ts_ms", pa.int64()),
+                            ("emit_ts_ms", pa.int64()), ("batch_id", pa.int64())])
 
 _DDL_TYPES = {"string": "STRING", "ts": "TIMESTAMP", "double": "DOUBLE", "long": "BIGINT", "int": "INT",
               "bool": "BOOLEAN", "map_sd": "MAP<STRING,DOUBLE>", "map_ss": "MAP<STRING,STRING>",
@@ -104,13 +123,14 @@ RAW_DDL = ", ".join(f"{name} {_DDL_TYPES[code]}" for name, code in S.LAYERS["raw
 # rows handed to the stateful function: one column per metric (NaN = missing)
 OUTPUT_DDL = ("entity_id STRING, ws_us BIGINT, split STRING, label DOUBLE, ae_score DOUBLE, ae_flag BOOLEAN, "
               "top_metrics ARRAY<STRING>, tier1_score DOUBLE, tier1_flag BOOLEAN, tier2_score DOUBLE, "
-              "tier2_flag BOOLEAN, pca_score DOUBLE")
+              "tier2_flag BOOLEAN, pca_score DOUBLE, max_ingest_ms DOUBLE, batch_ingest_ms DOUBLE")
 OUTPUT_COLUMNS = [c.split()[0] for c in OUTPUT_DDL.split(", ")]
 STATE_FIELDS = ("max_us", "emitted_end", "open_starts", "open_cnt", "open_sum", "open_max", "open_test",
-                "open_label", "hist_x", "hist_scores")
+                "open_label", "open_ingest", "hist_x", "hist_scores")
 STATE_DDL = ("max_us BIGINT, emitted_end BIGINT, open_starts ARRAY<BIGINT>, open_cnt ARRAY<DOUBLE>, "
              "open_sum ARRAY<DOUBLE>, open_max ARRAY<DOUBLE>, open_test ARRAY<BOOLEAN>, "
-             "open_label ARRAY<DOUBLE>, hist_x ARRAY<DOUBLE>, hist_scores ARRAY<DOUBLE>")
+             "open_label ARRAY<DOUBLE>, open_ingest ARRAY<DOUBLE>, hist_x ARRAY<DOUBLE>, "
+             "hist_scores ARRAY<DOUBLE>")
 
 
 # ---------------------------------------------------------------- models (loaded once per process)
@@ -199,7 +219,8 @@ def get_models() -> dict:
 def new_state(n_in: int) -> dict:
     return {"max_us": None, "emitted_end": None, "open_starts": np.empty(0, np.int64),
             "open_cnt": np.zeros((0, K)), "open_sum": np.zeros((0, K)), "open_max": np.zeros((0, K)),
-            "open_test": np.empty(0, bool), "open_label": np.empty(0), "hist_x": np.zeros((0, n_in)),
+            "open_test": np.empty(0, bool), "open_label": np.empty(0), "open_ingest": np.empty(0),
+            "hist_x": np.zeros((0, n_in)),
             "hist_scores": np.empty(0)}
 
 
@@ -217,6 +238,7 @@ def decode_state(values, n_in: int) -> dict:
             **{f: np.asarray(v[f], dtype=np.float64).reshape(-1, K) for f in ("open_cnt", "open_sum", "open_max")},
             "open_test": np.asarray(v["open_test"], dtype=bool),
             "open_label": np.asarray(v["open_label"], dtype=np.float64),
+            "open_ingest": np.asarray(v["open_ingest"], dtype=np.float64),
             "hist_x": np.asarray(v["hist_x"], dtype=np.float64).reshape(-1, n_in),
             "hist_scores": np.asarray(v["hist_scores"], dtype=np.float64)}
 
@@ -233,16 +255,20 @@ def _add_rows(st: dict, rows: pd.DataFrame) -> int:
         new = pd.DataFrame(np.hstack([~np.isnan(vals), np.nan_to_num(vals), vals]))
         new["start"], new["test"] = ws, (rows["split"] == "test").to_numpy()
         new["label"] = rows["label"].to_numpy(dtype=np.float64)
+        new["ingest"] = (rows["ingest_ms"].to_numpy(dtype=np.float64) if "ingest_ms" in rows
+                         else np.full(len(rows), np.nan))
         old = pd.DataFrame(np.hstack([st["open_cnt"], st["open_sum"], st["open_max"]]))
         old["start"], old["test"], old["label"] = st["open_starts"], st["open_test"], st["open_label"]
+        old["ingest"] = st["open_ingest"]
         agg = {c: ("max" if isinstance(c, int) and c >= 2 * K else "sum") for c in range(3 * K)}
         g = pd.concat([old, new], ignore_index=True).groupby("start", sort=True).agg(
-            {**agg, "test": "max", "label": "max"})
+            {**agg, "test": "max", "label": "max", "ingest": "max"})
         block = g[list(range(3 * K))].to_numpy(dtype=np.float64)
         st["open_cnt"], st["open_sum"], st["open_max"] = block[:, :K], block[:, K:2 * K], block[:, 2 * K:]
         st["open_starts"] = g.index.to_numpy(dtype=np.int64)
         st["open_test"] = g["test"].to_numpy(dtype=bool)
         st["open_label"] = g["label"].to_numpy(dtype=np.float64)
+        st["open_ingest"] = g["ingest"].to_numpy(dtype=np.float64)
     return int((~on_time).sum())
 
 
@@ -253,7 +279,8 @@ def _pop_complete(st: dict) -> dict | None:
     done = st["open_starts"] + WINDOW_US <= st["max_us"] - WATERMARK_US
     if not done.any():
         return None
-    out = {f: st[f][done] for f in ("open_starts", "open_cnt", "open_sum", "open_max", "open_test", "open_label")}
+    out = {f: st[f][done] for f in ("open_starts", "open_cnt", "open_sum", "open_max", "open_test", "open_label",
+                                    "open_ingest")}
     for f in out:
         st[f] = st[f][~done]
     st["emitted_end"] = int(out["open_starts"].max() + WINDOW_US)
@@ -303,6 +330,8 @@ def score_windows(entity: str, means: np.ndarray, maxes: np.ndarray, split: list
 def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.DataFrame, int]:
     """One micro-batch of one machine: fold rows (event_us, m00..m37, split, label) into st, score the
     windows that became complete. Returns (OUTPUT_COLUMNS rows for those windows, late rows dropped)."""
+    batch_ingest = (float(np.nanmax(rows["ingest_ms"].to_numpy(dtype=np.float64)))
+                    if "ingest_ms" in rows and rows["ingest_ms"].notna().any() else np.nan)
     late = _add_rows(st, rows.sort_values("event_us", kind="stable"))
     w = _pop_complete(st)
     if w is None:
@@ -328,6 +357,7 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
         out["tier2_score"] = np.asarray(res["tier2_score"], dtype=np.float64)
         out["tier2_flag"] = [None if pd.isna(f) else bool(f) for f in res["tier2_flag"]]
         out["pca_score"] = np.asarray(res["pca_score"], dtype=np.float64)
+    out["max_ingest_ms"], out["batch_ingest_ms"] = w["open_ingest"], batch_ingest
     return out[OUTPUT_COLUMNS], late
 
 
@@ -359,21 +389,23 @@ def read_files(spark, machines: int | None, files_per_trigger: int = 1):
 
 def build_scores(telemetry):
     """telemetry (entity_id, event_time watermarked, metrics, attrs, label) -> scored windows with the
-    scores-layer columns plus split and ws_us."""
+    scores-layer columns plus split, ws_us, max_ingest_ms and batch_ingest_ms (null without attrs.ingest_ts)."""
     from pyspark.sql import functions as F
     from pyspark.sql.streaming.state import GroupStateTimeout
     from src.streaming import score_job as mod  # by-name reference, so workers keep their model cache
 
     rows = telemetry.select("entity_id", F.expr("unix_micros(event_time)").alias("event_us"),
                             *[F.col("metrics")[m].alias(m) for m in METRICS],
-                            F.col("attrs")["split"].alias("split"), F.col("label").cast("double").alias("label"))
+                            F.col("attrs")["split"].alias("split"), F.col("label").cast("double").alias("label"),
+                            F.col("attrs")["ingest_ts"].cast("double").alias("ingest_ms"))
     windows = rows.groupBy("entity_id").applyInPandasWithState(
         mod.score_group, OUTPUT_DDL, STATE_DDL, "append", GroupStateTimeout.NoTimeout)
     cols = {"window_start": F.expr("timestamp_micros(ws_us)"),
             "window_end": F.expr(f"timestamp_micros(ws_us + {WINDOW_US})"),
             "is_anomaly": F.coalesce("ae_flag", F.lit(False)),   # AE only; Tier 1 never raises the alarm
             "label": F.col("label").cast("int")}
-    return windows.select(*[cols.get(c, F.col(c)).alias(c) for c in S.LAYERS["scores"]], "split", "ws_us")
+    return windows.select(*[cols.get(c, F.col(c)).alias(c) for c in S.LAYERS["scores"]], "split", "ws_us",
+                          "max_ingest_ms", "batch_ingest_ms")
 
 
 def write_scores_file(pdf: pd.DataFrame, batch_id: int, out_dir: Path = OUTPUT_DIR) -> Path:
@@ -396,13 +428,32 @@ def write_scores_file(pdf: pd.DataFrame, batch_id: int, out_dir: Path = OUTPUT_D
     return path
 
 
+def write_latency_file(pdf: pd.DataFrame, batch_id: int, emit_ts_ms: int, out_dir: Path = LATENCY_DIR) -> Path:
+    """Emitted windows of one micro-batch (entity_id, ws_us, max_ingest_ms, batch_ingest_ms) ->
+    out_dir/batch-<id>.parquet with LATENCY_SCHEMA (ingest times null where the records had none)."""
+    def ms(col):
+        return pa.array(pdf[col].astype("float64").round(), from_pandas=True).cast(pa.int64())
+    n = len(pdf)
+    start_type = LATENCY_SCHEMA.field("window_start").type
+    arrays = [pa.array(pdf["entity_id"].astype(str).tolist(), type=pa.string()),
+              pa.array(pdf["ws_us"].to_numpy(dtype=np.int64), type=pa.int64()).cast(start_type),
+              ms("max_ingest_ms"), ms("batch_ingest_ms"),
+              pa.array(np.full(n, emit_ts_ms, dtype=np.int64)), pa.array(np.full(n, batch_id, dtype=np.int64))]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path, tmp = out_dir / f"batch-{batch_id:06d}.parquet", out_dir / f".batch-{batch_id:06d}.tmp"
+    pq.write_table(pa.Table.from_arrays(arrays, schema=LATENCY_SCHEMA), tmp)
+    os.replace(tmp, path)
+    return path
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--input", choices=("kafka", "files"), default="kafka")
     parser.add_argument("--machines", type=int, default=None, help="files input: only the first N machine files")
     parser.add_argument("--once", action="store_true", help="trigger(availableNow=True), then stop")
     parser.add_argument("--reset", action="store_true",
-                        help="delete data/scores_stream/source=smd and checkpoints/score/source=smd first")
+                        help="delete data/scores_stream/source=smd, data/latency_stream and "
+                             "checkpoints/score/source=smd first")
     parser.add_argument("--tier1", choices=TIER1_MODES, default="off",
                         help="off (default): tier1 columns null; v1: robust z vs train median from "
                              "models/tier1_smd/baselines_v1.parquet. is_anomaly stays AE only either way")
@@ -411,13 +462,19 @@ def main(argv=None) -> int:
     parser.add_argument("--master", default="local[*]", help="Spark master, e.g. local[4] (default local[*])")
     parser.add_argument("--shuffle-partitions", type=int, default=4,
                         help="spark.sql.shuffle.partitions (default 4)")
+    parser.add_argument("--trigger", default=TRIGGER,
+                        help=f"processing-time trigger without --once (default '{TRIGGER}')")
+    parser.add_argument("--max-seconds", type=float, default=None,
+                        help="stop the query after this many wall seconds")
+    parser.add_argument("--idle-stop", type=float, default=None,
+                        help="stop once rows were seen and no micro-batch had input rows for this many seconds")
     args = parser.parse_args(argv)
 
     if not (AE_DIR / "model.pt").exists():
         print(f"FAIL no autoencoder at {AE_DIR.relative_to(ROOT).as_posix()}: run src/detection/autoencoder.py")
         return 1
     if args.reset:
-        for d in (OUTPUT_DIR, CHECKPOINT_DIR):
+        for d in (OUTPUT_DIR, CHECKPOINT_DIR, LATENCY_ROOT):
             shutil.rmtree(d, ignore_errors=True)
         print("reset: removed stream output and checkpoint", flush=True)
     if args.tier1 == "v1" and not TIER1_PATH.exists():
@@ -453,6 +510,8 @@ def main(argv=None) -> int:
             if len(pdf):
                 write_scores_file(pdf, batch_id)
             n_anom = int(pdf["is_anomaly"].sum()) if len(pdf) else 0
+            lat = (batch_df.select("entity_id", "ws_us", "max_ingest_ms", "batch_ingest_ms").toPandas()
+                   if kafka and n_windows else None)
             if kafka and n_anom:
                 ts = {"timestampFormat": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
                 (test.filter("is_anomaly")
@@ -460,23 +519,33 @@ def main(argv=None) -> int:
                          F.to_json(F.struct(*S.LAYERS["scores"]), ts).alias("value"))
                  .write.format("kafka").option("kafka.bootstrap.servers", S.KAFKA_BOOTSTRAP)
                  .option("topic", S.TOPIC_ANOMALIES).save())
+            if lat is not None:
+                write_latency_file(lat, batch_id, int(time.time() * 1000))
             stats[batch_id] = (n_windows, len(pdf), n_anom)
         finally:
             batch_df.unpersist()
 
     writer = (build_scores(telemetry).writeStream.foreachBatch(write_batch)
               .option("checkpointLocation", CHECKPOINT_DIR.as_posix()))
-    writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime=TRIGGER)
+    writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime=args.trigger)
     query = writer.start()
     print(f"score_job started: {what} -> {OUTPUT_DIR.relative_to(ROOT).as_posix()}"
           f"{' + topic ' + S.TOPIC_ANOMALIES if kafka else ''}", flush=True)
 
     last_batch = -1
+    started = last_input = time.monotonic()
+    rows_seen = False
 
     def report():
-        nonlocal last_batch
+        nonlocal last_batch, last_input, rows_seen
         for p in query.recentProgress:
             if p["batchId"] > last_batch:
+                if p.get("numInputRows", 0):
+                    rows_seen, last_input = True, time.monotonic()
+                if kafka:
+                    PROGRESS_LOG.parent.mkdir(parents=True, exist_ok=True)
+                    with PROGRESS_LOG.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps({"logged_ts_ms": int(time.time() * 1000), **p}) + "\n")
                 state_rows = sum(op.get("numRowsTotal", 0) for op in p.get("stateOperators", []))
                 n_windows, n_test, n_anom = stats.get(p["batchId"], (0, 0, 0))
                 print(f"batch {p['batchId']}: input rows {p.get('numInputRows', 0)}, windows scored {n_windows} "
@@ -489,6 +558,15 @@ def main(argv=None) -> int:
             stopped = query.awaitTermination(5)
             report()
             if stopped:
+                break
+            now = time.monotonic()
+            if args.max_seconds is not None and now - started >= args.max_seconds:
+                print(f"stopping score_job: --max-seconds {args.max_seconds:g} reached", flush=True)
+                query.stop()
+                break
+            if args.idle_stop is not None and rows_seen and now - last_input >= args.idle_stop:
+                print(f"stopping score_job: no input rows for {args.idle_stop:g} s", flush=True)
+                query.stop()
                 break
     except KeyboardInterrupt:
         print("stopping score_job", flush=True)

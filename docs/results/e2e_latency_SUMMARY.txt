@@ -1,0 +1,69 @@
+E2E LATENCY - overnight run summary (2026-11-03, branch syam/e2e-latency)
+=======================================================================
+
+RESULT: INCOMPLETE. Code, test and report are done. The measurement runs were stopped by the
+"free RAM < 1 GB" rule on both attempts. Only partial 100x data exists; 500x and max were not run.
+
+What was built
+--------------
+- src/streaming/score_job.py: with --input kafka, every emitted window (train and test) also goes to
+  data/latency_stream/source=smd/batch-<id>.parquet:
+  entity_id, window_start, max_ingest_ts_ms, batch_max_ingest_ts_ms, emit_ts_ms, batch_id.
+  There is one extra column you did not ask for: batch_max_ingest_ts_ms, the newest ingest time of the
+  micro-batch that closed the window. It separates processing time from the watermark wait.
+  The state carries the newest ingest time per open window (new state field open_ingest, so old
+  checkpoints need --reset). LAYERS['scores'] and contracts/ are unchanged.
+  New flags: --trigger (default 30 seconds, as before), --max-seconds, --idle-stop. --reset also wipes
+  data/latency_stream. The query progress is logged to data/latency_stream/progress.jsonl.
+- src/streaming/latency_report.py: per run, p50/p95/max of total (emit - newest ingest of the window),
+  processing (emit - newest ingest of the batch), batch run time, watermark wait (measured and
+  11 min / speed-up), and Kafka consumer lag over time. It writes docs/results/e2e_latency.md and .png.
+- experiments/e2e_latency_runs.py: the run driver. Per run it recreates telemetry.smd, starts score_job
+  and replay together, samples lag and free RAM every 5 s, and enforces the 25-minute cap and the 1 GB
+  RAM floor.
+- tests/test_latency_stream.py: 5 tests (ingest time per window across micro-batches with the state
+  round-tripped, null without ingest_ts, parquet schema, percentiles, lag from the checkpoint).
+- docs/results/e2e_latency.md, e2e_latency.png, e2e_latency_notes.md (analysis + how to repeat).
+
+What ran
+--------
+Kafka was down when I started: no container was running. I ran docker compose up, which created a
+fresh container, then infra/create_topics.py and tools/check_kafka.py; tools/check_spark_kafka.py then
+gave PASS.
+Smoke test: speedup 0, limit 20,000 -> OK (20,000 records, 3,892 windows, lag back to 0).
+Attempt 1: speedup 100, limit 56,000, score_job local[*] -> stopped at 70 s, free RAM 829 MB.
+Attempt 2: speedup 100, limit 56,000, score_job local[4] -> stopped at 110 s, free RAM 808 MB.
+Two failures -> I stopped the runs step as you instructed. 500x and max were not attempted.
+
+Table (partial: 1 and 2 scored micro-batches; trigger 30 s; times in seconds)
+run                      master    windows  total p50/p95/max   processing p50/p95/max  batch run  peak lag
+speedup_100_local_star   local[*]  196      28.2 / 37.2 / 37.2  12.6 / 12.6 / 12.6      12.6       2,028
+speedup_100_local4       local[4]  560      31.4 / 44.7 / 45.3  11.3 / 11.7 / 11.7      11.4-12.0  1,911
+Event-time wait from the 10-minute watermark at 100x: 11 min / 100 = 6.6 s (500x: 1.32 s, max: ~0).
+Goal p95 < 10 s: NOT met. Processing p95 is about 11.7-12.6 s, and the total adds up to 30 s of
+trigger wait plus the 6.6 s watermark wait.
+
+Main finding (look at this first)
+---------------------------------
+Every micro-batch takes about 11 s, even batch 0 with ZERO input rows (addBatch 11.2 s). At the same
+time free RAM drops by about 1 GB once per batch, from a floor of about 1.8 GB. Both fit the Python
+workers of applyInPandasWithState being restarted every batch and re-importing PyTorch and the models.
+This is a hypothesis, not verified; e2e_latency_notes.md lists how to check it. Fixing it should remove
+the 11 s floor and the RAM spike, after which the runs can be repeated with:
+  python experiments/e2e_latency_runs.py
+  python src/streaming/latency_report.py --notes docs/results/e2e_latency_notes.md
+Other apps open during the runs: WSL vmmem 1.3 GB, Edge about 1.5 GB. Closing them would give headroom.
+To reach p95 < 10 s the trigger also has to be well below 30 s (try --trigger "5 seconds").
+
+Side observation, not investigated: in the first batches of the kafka runs, every emitted test window
+was flagged (30/30, 6/6, 21/21; smoke run 36/36). The files run flags ~1% (63/5694). This may be the AE
+adaptive threshold with a short score history at the start of a stream.
+
+Checks
+------
+pytest: 116 passed
+python tools/check_contracts.py: PASS
+python tools/check_stream_parity.py --machines 2 (after score_job --input files --machines 2 --once --reset):
+  PASS (10,431 matched windows, max |diff| 9.56e-09, ae_flag agreement 100%)
+
+Git: committed to syam/e2e-latency and pushed. No PR opened, nothing merged.
