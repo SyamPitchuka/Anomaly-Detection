@@ -32,7 +32,9 @@ Steps:
 7. Test windows go to data/scores/source=smd with the scores-layer columns. tier1_score/tier1_flag come
    from data/scores_tier1/source=smd and ae_score/ae_flag/top_metrics from data/scores_ae/source=smd,
    joined on (entity_id, window_start) when those folders exist, else null.
-   is_anomaly = coalesce(ae_flag, false) OR coalesce(tier1_flag, false).
+   is_anomaly = coalesce(ae_flag, false): the autoencoder alone raises the alarm, as in
+   src/streaming/score_job.py (see docs/results/tier1_stream.md). tier1_score/tier1_flag are kept in the
+   output as a baseline and explainer only; they never change is_anomaly.
 8. For Tier 2, Tier 2b and the autoencoder (if present), the same report as autoencoder.py: composite F1,
    faults caught, alarm precision, false alarms per machine per day, median delay, PR-AUC of the score,
    point and point-adjusted event precision/recall/F1, per machine on time-ordered test windows and overall.
@@ -296,7 +298,7 @@ def attach_other_tiers(spark: SparkSession, test: DataFrame, root: Path, source:
             test = test.select("*", *[F.lit(None).cast(t).alias(c) for c, t in cols.items()])
         else:
             test = test.join(other, KEYS, "left")
-    test = test.withColumn("is_anomaly", F.coalesce("ae_flag", F.lit(False)) | F.coalesce("tier1_flag", F.lit(False)))
+    test = test.withColumn("is_anomaly", F.coalesce("ae_flag", F.lit(False)))   # AE only; Tier 1 never alarms
     return test, found
 
 
