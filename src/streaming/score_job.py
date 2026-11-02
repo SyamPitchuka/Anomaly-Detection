@@ -180,7 +180,7 @@ def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH, tier1: str
         from src.detection import stream_baselines
         models["baselines_module"] = stream_baselines
         if hasattr(stream_baselines, "load_models"):
-            models["baselines"] = stream_baselines.load_models()
+            models["baselines"] = stream_baselines.load_models(history_windows=models["ae"]["recenter"])
     return models
 
 
@@ -309,6 +309,8 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
         return pd.DataFrame(columns=OUTPUT_COLUMNS), late
     means, maxes, split, label = _window_values(w)
     n = len(means)
+    i_mean = models["ae"]["aggs"].index("mean")   # previous window means, before score_windows updates hist_x
+    history = st["hist_x"][:, i_mean * K:(i_mean + 1) * K]
     ae_score, ae_flag, top = score_windows(entity, means, maxes, split, st, models["ae"])
     out = pd.DataFrame({"entity_id": [entity] * n, "ws_us": w["open_starts"], "split": split, "label": label,
                         "ae_score": ae_score, "ae_flag": pd.Series(ae_flag, dtype=object), "top_metrics": top})
@@ -322,7 +324,7 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
         pdf.insert(0, "entity_id", entity)
         pdf.insert(1, "window_start", w["open_starts"])
         pdf.insert(2, "split", split)
-        res = module.score_baselines(pdf, models)
+        res = module.score_baselines(pdf, models, history)
         out["tier2_score"] = np.asarray(res["tier2_score"], dtype=np.float64)
         out["tier2_flag"] = [None if pd.isna(f) else bool(f) for f in res["tier2_flag"]]
         out["pca_score"] = np.asarray(res["pca_score"], dtype=np.float64)
