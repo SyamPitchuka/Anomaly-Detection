@@ -153,6 +153,26 @@ def test_tier1_hook(setup, tmp_path):
     assert out["tier1_score"].isna().all() and out["tier1_flag"].isna().all()   # no baselines for it
 
 
+def test_tier1_switch(monkeypatch, tmp_path):
+    """--tier1 off (default) loads no baselines even if the file exists; v1 loads them; bad values fail."""
+    path = tmp_path / "baselines_v1.parquet"
+    pd.DataFrame({"entity_id": ["machine-x"], "metric": ["m00"], "median": [1.0], "mad": [1.0]}).to_parquet(path)
+    monkeypatch.setattr(M.AE, "load_model", lambda d: ("model", "scaler", "threshold"))
+    monkeypatch.setattr(M, "ae_bundle", lambda *a: {"fake": True})
+    monkeypatch.setattr(M, "BASELINES_MODULE", tmp_path / "missing.py")
+    monkeypatch.delenv(M.TIER1_ENV, raising=False)
+    assert M.tier1_mode() == "off"
+    assert M.load_models(tmp_path, path)["tier1"] is None
+    monkeypatch.setenv(M.TIER1_ENV, "v1")
+    assert M.tier1_mode() == "v1"
+    assert set(M.load_models(tmp_path, path)["tier1"]) == {"machine-x"}
+    assert M.load_models(tmp_path, path, tier1="off")["tier1"] is None
+    monkeypatch.setenv(M.TIER1_ENV, "on")
+    with pytest.raises(ValueError):
+        M.tier1_mode()
+    assert M.TIER1_PATH.name == "baselines_v1.parquet"
+
+
 def test_write_scores_file(setup, tmp_path):
     raw, _, models = setup
     out = _stream(raw, models, 10_000)
