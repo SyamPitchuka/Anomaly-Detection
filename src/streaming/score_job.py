@@ -5,6 +5,7 @@ Run from the repo root:
     python src/streaming/score_job.py --input kafka --once     # what is in Kafka now, then stop
     python src/streaming/score_job.py --input files --machines 2 --once   # replay data/raw/source=smd
     python src/streaming/score_job.py --input files --once --reset        # wipe output + checkpoint first
+    python src/streaming/score_job.py --input files --once --tier1 v1     # also fill tier1_score/tier1_flag
     python src/streaming/score_job.py --input files --once --master local[2] --shuffle-partitions 4
     python src/streaming/score_job.py --input files --once --files-per-trigger 8   # 8 machines per batch
 
@@ -31,8 +32,10 @@ Train windows are scored too (they feed the rolling median and the score history
 windows are written.
 
 Hooks, each optional:
-- Tier 1: models/tier1_smd/baselines.parquet (entity_id, metric, median, mad) -> see load_tier1_baselines()
-  and tier1_scores(). Missing file -> tier1_score / tier1_flag null.
+- Tier 1 (--tier1 v1, default off): models/tier1_smd/baselines_v1.parquet (entity_id, metric, median, mad)
+  -> see load_tier1_baselines() and tier1_scores(). Off -> tier1_score / tier1_flag null. Tier 1 is a
+  baseline and explainer only: it never changes is_anomaly (see docs/results/tier1_stream.md). The switch
+  reaches the Python workers through the SCORE_JOB_TIER1 environment variable, set before Spark starts.
 - Tier 2 / 2b: if src/detection/stream_baselines.py exists, score_baselines(pdf, models) is called on the
   emitted windows. pdf has entity_id, window_start (int64 microseconds UTC), split and <metric>_mean,
   <metric>_max for m00..m37 (NaN = no value); models is this job's model dict, with
@@ -41,7 +44,7 @@ Hooks, each optional:
 
 Output: test windows -> data/scores_stream/source=smd/batch-<id>.parquet (one file per micro-batch, so a
 replayed batch overwrites its own file), columns of contracts.schemas.LAYERS['scores'],
-is_anomaly = coalesce(ae_flag, false) OR coalesce(tier1_flag, false). Checkpoint: checkpoints/score/source=smd.
+is_anomaly = coalesce(ae_flag, false) (AE only). Checkpoint: checkpoints/score/source=smd.
 With --input kafka, rows with is_anomaly also go to the anomalies topic (key entity_id, value JSON).
 """
 import argparse
@@ -84,7 +87,9 @@ WATERMARK_US = 10 * 60 * 1_000_000
 TRIGGER = "30 seconds"
 
 AE_DIR = ROOT / S.MODELS["ae"].replace("<source>", SOURCE)
-TIER1_PATH = ROOT / "models" / f"tier1_{SOURCE}" / "baselines.parquet"
+TIER1_PATH = ROOT / "models" / f"tier1_{SOURCE}" / "baselines_v1.parquet"
+TIER1_MODES = ("off", "v1")
+TIER1_ENV = "SCORE_JOB_TIER1"   # how --tier1 reaches the Python workers (inherited from the driver)
 TIER1_MAD_SCALE = 1.4826
 TIER1_Z = 3.0
 BASELINES_MODULE = ROOT / "src" / "detection" / "stream_baselines.py"
@@ -155,10 +160,21 @@ def tier1_scores(entity: str, means: np.ndarray, baselines: dict | None) -> tupl
     return score, [bool(s > TIER1_Z) if v else None for s, v in zip(score, valid)]
 
 
-def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH) -> dict:
+def tier1_mode() -> str:
+    """--tier1 as seen by this process: SCORE_JOB_TIER1, default off."""
+    mode = os.environ.get(TIER1_ENV, "off")
+    if mode not in TIER1_MODES:
+        raise ValueError(f"{TIER1_ENV}={mode!r}, expected one of {TIER1_MODES}")
+    return mode
+
+
+def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH, tier1: str | None = None) -> dict:
+    """tier1: 'off' or 'v1' (None -> tier1_mode()). Tier 1 baselines are loaded only for 'v1'."""
     import torch
+    tier1 = tier1_mode() if tier1 is None else tier1
     torch.set_num_threads(1)  # runs on each worker: several Python workers already run in parallel
-    models = {"ae": ae_bundle(*AE.load_model(ae_dir)), "tier1": load_tier1_baselines(tier1_path),
+    models = {"ae": ae_bundle(*AE.load_model(ae_dir)),
+              "tier1": load_tier1_baselines(tier1_path) if tier1 == "v1" else None,
               "baselines_module": None, "baselines": None}
     if BASELINES_MODULE.exists():
         from src.detection import stream_baselines
@@ -353,7 +369,7 @@ def build_scores(telemetry):
         mod.score_group, OUTPUT_DDL, STATE_DDL, "append", GroupStateTimeout.NoTimeout)
     cols = {"window_start": F.expr("timestamp_micros(ws_us)"),
             "window_end": F.expr(f"timestamp_micros(ws_us + {WINDOW_US})"),
-            "is_anomaly": F.coalesce("ae_flag", F.lit(False)) | F.coalesce("tier1_flag", F.lit(False)),
+            "is_anomaly": F.coalesce("ae_flag", F.lit(False)),   # AE only; Tier 1 never raises the alarm
             "label": F.col("label").cast("int")}
     return windows.select(*[cols.get(c, F.col(c)).alias(c) for c in S.LAYERS["scores"]], "split", "ws_us")
 
@@ -385,6 +401,9 @@ def main(argv=None) -> int:
     parser.add_argument("--once", action="store_true", help="trigger(availableNow=True), then stop")
     parser.add_argument("--reset", action="store_true",
                         help="delete data/scores_stream/source=smd and checkpoints/score/source=smd first")
+    parser.add_argument("--tier1", choices=TIER1_MODES, default="off",
+                        help="off (default): tier1 columns null; v1: robust z vs train median from "
+                             "models/tier1_smd/baselines_v1.parquet. is_anomaly stays AE only either way")
     parser.add_argument("--files-per-trigger", type=int, default=1,
                         help="files input: machine files per micro-batch (maxFilesPerTrigger, default 1)")
     parser.add_argument("--master", default="local[*]", help="Spark master, e.g. local[4] (default local[*])")
@@ -399,9 +418,12 @@ def main(argv=None) -> int:
         for d in (OUTPUT_DIR, CHECKPOINT_DIR):
             shutil.rmtree(d, ignore_errors=True)
         print("reset: removed stream output and checkpoint", flush=True)
-    if not TIER1_PATH.exists():
-        print(f"note: {TIER1_PATH.relative_to(ROOT).as_posix()} not found, tier1_score/tier1_flag stay null",
-              flush=True)
+    if args.tier1 == "v1" and not TIER1_PATH.exists():
+        print(f"FAIL --tier1 v1 needs {TIER1_PATH.relative_to(ROOT).as_posix()}: run src/detection/tier1_zscore.py "
+              "and rename its baselines.parquet to baselines_v1.parquet")
+        return 1
+    os.environ[TIER1_ENV] = args.tier1   # before the SparkSession, so the Python workers inherit it
+    print(f"tier1: {args.tier1} (is_anomaly = ae_flag only)", flush=True)
     if not BASELINES_MODULE.exists():
         print(f"note: {BASELINES_MODULE.relative_to(ROOT).as_posix()} not found, "
               "tier2_score/tier2_flag/pca_score stay null", flush=True)
