@@ -53,6 +53,8 @@ OUT_DIR = ROOT / "docs" / "results"
 EXTRA_JSON = [OUT_DIR / "e2_local_fpt1.json", OUT_DIR / "e2_local_before_fix.json"]
 OOM = "out of memory"
 MB = 2 ** 20
+HARDWARE = ("i5-13420H, 4 P-cores + 4 E-cores (12 threads), 16 GB RAM, Windows 11, "
+            "Spark local[N]")
 
 BATCH_RE = re.compile(r"^batch (\d+): input rows (\d+), .*duration (\d+) ms, state rows (\d+)", re.M)
 METRICS = ("wall_s", "batch_s", "records", "rps", "peak_state", "free_before_mb", "peak_rss_mb", "min_free_mb")
@@ -259,8 +261,8 @@ def write_markdown(table: list[dict], meta: dict, notes: str, path: Path, extras
 Setup: `python src/streaming/score_job.py --input files --once --reset --files-per-trigger {meta['files_per_trigger']}`
 on all {meta['machines']} SMD machines ({meta['records']:,} records, {meta['batches']} micro-batches),
 Spark master `local[n]`, `spark.sql.shuffle.partitions = 2n`, one math thread per Python worker,
-{meta['repeats']} runs per setting, median of the completed runs. Machine: {meta['host']}
-({meta['cpu_count']} logical cores, {meta['ram_gb']:.1f} GB RAM). Measured {meta['date']} with
+{meta['repeats']} runs per setting, median of the completed runs.
+Hardware: {HARDWARE}. Measured {meta['date']} with
 `python experiments/e2_local_scaling.py`; a run is stopped and counted as {OOM} if free RAM drops below
 {meta['min_free_gb']:g} GB.
 

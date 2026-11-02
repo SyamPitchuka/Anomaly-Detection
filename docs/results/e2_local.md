@@ -34,8 +34,8 @@ In these runs only PyTorch was held to one thread per worker (`torch.set_num_thr
 Setup: `python src/streaming/score_job.py --input files --once --reset --files-per-trigger 8`
 on all 28 SMD machines (1,416,825 records, 4 micro-batches),
 Spark master `local[n]`, `spark.sql.shuffle.partitions = 2n`, one math thread per Python worker,
-2 runs per setting, median of the completed runs. Machine: Windows, Intel64 Family 6 Model 186 Stepping 2, GenuineIntel
-(12 logical cores, 15.6 GB RAM). Measured 2026-11-01 with
+2 runs per setting, median of the completed runs.
+Hardware: i5-13420H, 4 P-cores + 4 E-cores (12 threads), 16 GB RAM, Windows 11, Spark local[N]. Measured 2026-11-01 with
 `python experiments/e2_local_scaling.py`; a run is stopped and counted as out of memory if free RAM drops below
 1 GB.
 
