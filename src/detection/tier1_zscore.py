@@ -86,13 +86,13 @@ def raw_files(raw_dir: Path, sample: int | None) -> list[Path]:
     return files
 
 
-def build_windows(raw: DataFrame, metrics: list[str]) -> tuple[DataFrame, DataFrame]:
+def build_windows(raw: DataFrame, metrics: list[str], window: str = WINDOW) -> tuple[DataFrame, DataFrame]:
     """Returns (means, meta).
 
     means: entity_id, window_start, window_end, metric, x (window mean of the metric).
     meta:  entity_id, window_start, window_end, split ('train'|'test'), label (test windows only, null -> 0).
     """
-    rows = (raw.withColumn("w", F.window("event_time", WINDOW))
+    rows = (raw.withColumn("w", F.window("event_time", window))
             .select("entity_id", F.col("w.start").alias("window_start"), F.col("w.end").alias("window_end"),
                     "metrics", F.coalesce(F.col("attrs")["split"] == "test", F.lit(False)).alias("is_test"),
                     "label"))
