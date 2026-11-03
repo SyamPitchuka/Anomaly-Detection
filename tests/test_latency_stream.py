@@ -88,3 +88,14 @@ def test_lag_from_checkpoint(tmp_path):
     assert LR.committed_offsets(ck, "telemetry.smd") == {0: 5, 1: 7}   # batch 1 not committed yet
     assert LR.committed_offsets(tmp_path / "missing", "telemetry.smd") == {}
     assert LR.lag({0: 100, 1: 100}, {0: 5, 1: 7}) == 188
+
+
+def test_worker_log(tmp_path, monkeypatch):
+    path = tmp_path / "w.jsonl"
+    monkeypatch.delenv(M.WORKER_LOG_ENV, raising=False)
+    M.worker_log("load_models", seconds=1.0)          # off by default: nothing written
+    assert not path.exists()
+    monkeypatch.setenv(M.WORKER_LOG_ENV, str(path))
+    M.worker_log("load_models", seconds=1.0)
+    rec = json.loads(path.read_text().splitlines()[-1])
+    assert rec["event"] == "load_models" and rec["seconds"] == 1.0 and isinstance(rec["pid"], int)

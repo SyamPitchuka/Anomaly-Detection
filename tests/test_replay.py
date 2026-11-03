@@ -154,5 +154,15 @@ def test_main_reads_raw_layer_from_disk(tmp_path):
     assert len(producer.messages) == 4
 
 
+def test_fake_parquet_skipped_next_to_real_files(tmp_path):
+    folder = tmp_path / "data/raw/source=smd"
+    folder.mkdir(parents=True)
+    pq.write_table(_raw_table(10), folder / "machine-1-1.parquet")
+    pq.write_table(_raw_table(3), folder / "fake.parquet")   # same ids and times as the real rows
+    assert R.load_raw(tmp_path, "smd").num_rows == 10
+    (folder / "machine-1-1.parquet").unlink()
+    assert R.load_raw(tmp_path, "smd").num_rows == 3          # only fake data: still replayable
+
+
 def test_main_fails_without_raw_data(tmp_path):
     assert R.main(["--speedup", "0", "--root", str(tmp_path)], producer=MockProducer()) == 1

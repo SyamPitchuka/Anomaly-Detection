@@ -67,3 +67,20 @@ python tools/check_stream_parity.py --machines 2 (after score_job --input files 
   PASS (10,431 matched windows, max |diff| 9.56e-09, ae_flag agreement 100%)
 
 Git: committed to syam/e2e-latency and pushed. No PR opened, nothing merged.
+
+UPDATE 2026-11-03 (follow-up investigations; details in e2e_latency_notes.md)
+-----------------------------------------------------------------------------
+1. 30/30 flagged test windows: CAUSE FOUND AND FIXED. replay.py also sent data/raw/source=smd/fake.parquet,
+   whose 180 test rows reuse real ids and timestamps (machine-1-1, 1-2, 2-1, minutes 0-59). That gave
+   36 mixed train+fake windows, split=test, ae_score up to 3.1e6, all flagged. For the same 20,000
+   records, files vs kafka differed in exactly those 36 windows. After the fix (replay skips fake.parquet
+   when real files exist), kafka == files: 0 differing windows, max ae_score diff 0. Ruled out: history
+   length at stream start, event order across machines, missing train windows.
+2. Fixed ~11-19 s per micro-batch: CONFIRMED. On Windows, Spark 3.5.1 runs Python workers without the
+   daemon, and releaseWorker() closes non-daemon workers (seen in the PythonWorkerFactory bytecode), so
+   spark.python.worker.reuse has no effect. Every task of every batch is a new python.exe: about 7.5 s to
+   start and import torch/score_job, then load_models about 0.9 s, then 2.3 s of real scoring. The
+   ~280 MB per new worker explains the ~1 GB RAM dip per batch at local[4].
+   Processing p95 < 10 s is not reachable on the Windows laptop with this design. Recommended: measure
+   on Linux (VMs or a Spark container). Other options are in the notes (not applied).
+Checks: pytest 118 passed, check_contracts PASS, check_stream_parity PASS.

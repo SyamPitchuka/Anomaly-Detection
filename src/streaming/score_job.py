@@ -57,14 +57,23 @@ Each query progress is also appended to data/latency_stream/progress.jsonl.
 
 Stopping without Ctrl+C (for scripted runs): --max-seconds S stops the query after S wall seconds,
 --idle-stop S once rows were seen and no micro-batch had input rows for S seconds.
+
+Diagnostics: each batch line is followed by the batch's durationMs and the time of each foreachBatch step.
+With SCORE_JOB_WORKER_LOG=<file>, every process that imports this module (driver and Python workers)
+appends JSON lines: module_import (import time, process age), load_models (seconds) and one score_group
+line per machine and batch. On Windows, Spark does not reuse Python workers (no daemon), so every task of
+every batch is a new process that imports torch and loads the models again; see
+docs/results/e2e_latency_notes.md.
 """
 import argparse
-import os
 import json
+import os
 import shutil
 import sys
 import time
 from pathlib import Path
+
+_IMPORT_T0 = time.time()   # for the worker_log 'module_import' event
 
 # On Windows, Spark must start workers with this same venv Python (as in tools/check_spark_kafka.py).
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
@@ -205,12 +214,24 @@ def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH, tier1: str
 
 
 _MODELS: dict = {}
+WORKER_LOG_ENV = "SCORE_JOB_WORKER_LOG"   # diagnostics: JSON-lines file each Python worker appends to
+
+
+def worker_log(event: str, **fields) -> None:
+    """Append {ts_ms, pid, event, ...} to $SCORE_JOB_WORKER_LOG when set (off by default)."""
+    path = os.environ.get(WORKER_LOG_ENV)
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts_ms": int(time.time() * 1000), "pid": os.getpid(), "event": event,
+                                **fields}) + "\n")
 
 
 def get_models() -> dict:
     """Lazy per-process cache: the first window a worker scores loads the models, later ones reuse them."""
     if not _MODELS:
+        t0 = time.perf_counter()
         _MODELS.update(load_models())
+        worker_log("load_models", seconds=round(time.perf_counter() - t0, 3))
     return _MODELS
 
 
@@ -363,12 +384,15 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
 
 def score_group(key, pdf_iter, state):
     """applyInPandasWithState function, keyed by entity_id."""
+    t0 = time.perf_counter()
     models = get_models()
     n_in = len(models["ae"]["feature_metrics"])
     rows = pd.concat(list(pdf_iter), ignore_index=True)
     st = decode_state(state.get, n_in) if state.exists else new_state(n_in)
     out, _ = step(key[0], rows, st, models)
     state.update(encode_state(st))
+    worker_log("score_group", entity=key[0], rows=len(rows), windows=len(out),
+               seconds=round(time.perf_counter() - t0, 3))
     yield out
 
 
@@ -500,18 +524,30 @@ def main(argv=None) -> int:
         what = f"{len(names)} machine files ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"
 
     stats: dict[int, tuple[int, int, int]] = {}
+    steps_ms: dict[int, dict] = {}   # wall time of each foreachBatch step, printed with the batch line
 
     def write_batch(batch_df, batch_id):
+        t = [time.perf_counter()]
+        marks = {}
+
+        def mark(name):
+            t.append(time.perf_counter())
+            marks[name] = round((t[-1] - t[-2]) * 1000)
+
         batch_df.persist()
         try:
             n_windows = batch_df.count()
+            mark("count(stateful scoring)")
             test = batch_df.filter(F.col("split") == "test")
             pdf = test.drop("split", "window_start", "window_end").toPandas()
+            mark("toPandas(test)")
             if len(pdf):
                 write_scores_file(pdf, batch_id)
+            mark("write_scores")
             n_anom = int(pdf["is_anomaly"].sum()) if len(pdf) else 0
             lat = (batch_df.select("entity_id", "ws_us", "max_ingest_ms", "batch_ingest_ms").toPandas()
                    if kafka and n_windows else None)
+            mark("toPandas(latency)")
             if kafka and n_anom:
                 ts = {"timestampFormat": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
                 (test.filter("is_anomaly")
@@ -519,11 +555,14 @@ def main(argv=None) -> int:
                          F.to_json(F.struct(*S.LAYERS["scores"]), ts).alias("value"))
                  .write.format("kafka").option("kafka.bootstrap.servers", S.KAFKA_BOOTSTRAP)
                  .option("topic", S.TOPIC_ANOMALIES).save())
+            mark("kafka(anomalies)")
             if lat is not None:
                 write_latency_file(lat, batch_id, int(time.time() * 1000))
+            mark("write_latency")
             stats[batch_id] = (n_windows, len(pdf), n_anom)
         finally:
             batch_df.unpersist()
+            steps_ms[batch_id] = marks
 
     writer = (build_scores(telemetry).writeStream.foreachBatch(write_batch)
               .option("checkpointLocation", CHECKPOINT_DIR.as_posix()))
@@ -551,6 +590,9 @@ def main(argv=None) -> int:
                 print(f"batch {p['batchId']}: input rows {p.get('numInputRows', 0)}, windows scored {n_windows} "
                       f"(test {n_test}, anomalies {n_anom}), duration "
                       f"{p.get('durationMs', {}).get('triggerExecution', 0)} ms, state rows {state_rows}", flush=True)
+                print(f"  durationMs {json.dumps(p.get('durationMs', {}), sort_keys=True)}", flush=True)
+                if p["batchId"] in steps_ms:
+                    print(f"  foreachBatch steps ms {json.dumps(steps_ms[p['batchId']])}", flush=True)
                 last_batch = p["batchId"]
 
     try:
@@ -575,6 +617,19 @@ def main(argv=None) -> int:
         spark.stop()
     return 0
 
+
+def _log_import() -> None:
+    """worker_log: how long importing this module took, and how old the process was when it finished."""
+    try:
+        import psutil
+        age = round(time.time() - psutil.Process().create_time(), 3)
+    except Exception:  # noqa: BLE001  (psutil is optional)
+        age = None
+    worker_log("module_import", seconds=round(time.time() - _IMPORT_T0, 3), process_age_s=age,
+               main=__name__ == "__main__")
+
+
+_log_import()
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -98,7 +98,8 @@ def _kill_tree(proc) -> None:
 
 
 def run_once(speedup: float, limit: int, trigger: str, tag: str, order: int, min_free_mb: float,
-             idle_s: float, master: str = "local[4]", shuffle_partitions: int = 4) -> dict:
+             idle_s: float, master: str = "local[4]", shuffle_partitions: int = 4,
+             replay_root: Path | None = None) -> dict:
     import psutil
     from confluent_kafka import Consumer
 
@@ -144,8 +145,9 @@ def run_once(speedup: float, limit: int, trigger: str, tag: str, order: int, min
     time.sleep(5)   # first (empty) trigger
 
     rep_log = (out / "replay.log").open("w", encoding="utf-8")
-    replay = subprocess.Popen([py, "src/producer/replay.py", "--source", "smd", "--speedup", str(speedup),
-                               "--limit", str(limit)], cwd=ROOT, stdout=rep_log, stderr=subprocess.STDOUT, env=env)
+    replay_cmd = [py, "src/producer/replay.py", "--source", "smd", "--speedup", str(speedup), "--limit", str(limit)]
+    replay_cmd += ["--root", str(replay_root)] if replay_root else []
+    replay = subprocess.Popen(replay_cmd, cwd=ROOT, stdout=rep_log, stderr=subprocess.STDOUT, env=env)
     start = time.monotonic()
     consumer = Consumer({"bootstrap.servers": S.KAFKA_BOOTSTRAP, "group.id": "e2e-latency-lag-probe",
                          "enable.auto.commit": False})
@@ -217,12 +219,16 @@ def main(argv=None) -> int:
                     help="score_job Spark master (default local[4]: local[*] = 12 Python workers, each with its own "
                          "PyTorch + models, ran the 16 GB laptop below 1 GB free)")
     ap.add_argument("--shuffle-partitions", type=int, default=4)
+    ap.add_argument("--replay-root", type=Path, default=None,
+                    help="replay.py --root (a folder with data/raw/source=smd); replay loads every file there "
+                         "into memory, so a small subset saves RAM")
     args = ap.parse_args(argv)
     print(platform.platform(), flush=True)
     for i, spec in enumerate(args.runs):
         sp, lim = spec.split(":")
         meta = run_once(float(sp), int(lim), args.trigger, args.tag, args.order_start + i,
-                        args.min_free_gb * 1024, args.idle_stop, args.master, args.shuffle_partitions)
+                        args.min_free_gb * 1024, args.idle_stop, args.master, args.shuffle_partitions,
+                        args.replay_root)
         if meta["status"].startswith("out of memory"):
             print("stopping: out of memory", flush=True)
             return 1

@@ -33,6 +33,7 @@ from contracts import schemas as S  # noqa: E402
 
 TOPICS = {"smd": S.TOPIC_SMD, "alibaba": S.TOPIC_ALIBABA}
 COLUMNS = ["entity_id", "event_time", "metrics", "attrs", "label"]
+SKIP_FILES = {"fake.parquet"}   # same rule as src/detection/autoencoder.py (not imported: it pulls in torch)
 REPORT_INTERVAL_S = 5.0
 CHUNK_ROWS = 20000
 POLL_EVERY = 100
@@ -71,11 +72,17 @@ def build_value(source: str, entity_id: str, event_us: int, metrics, attrs, labe
 
 
 def load_raw(root: Path, source: str) -> pa.Table:
-    """Read all Parquet files of data/raw/source=<source> into one table."""
+    """Read the Parquet files of data/raw/source=<source> into one table.
+
+    fake.parquet (tools/fake_data.py) is skipped when real files are there, as the batch jobs and
+    score_job --input files do: its rows reuse real machine ids and timestamps, so replaying it next to the
+    real data put test rows inside real train windows. It is used only when it is the only file."""
     folder = Path(root) / S.PATHS["raw"] / f"source={source}"
     files = sorted(folder.glob("*.parquet"))
     if not files:
         raise FileNotFoundError(f"no Parquet files in {folder}")
+    real = [f for f in files if f.name not in SKIP_FILES]
+    files = real or files
     return pa.concat_tables([pq.read_table(f, columns=COLUMNS) for f in files])
 
 
