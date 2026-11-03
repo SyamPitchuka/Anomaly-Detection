@@ -187,6 +187,17 @@ batch should cost the scoring time plus Spark's own overhead. This has not been 
 3. **One shuffle partition per batch on the laptop** (`--shuffle-partitions 1`): one worker start per batch
    instead of two to four. It halves the RAM spike but not the latency, since workers start in parallel.
 4. Lower `replay.py`'s memory: read only the rows needed for `--limit` instead of the whole raw layer.
+   **Applied** (for the 8 GB VMs). Each sorted file is streamed in 256-row batches with buffered Parquet reads,
+   and the files are k-way merged on (event_time, entity_id); `--limit` stops reading after N records. A
+   file that is not sorted is loaded and sorted on its own. Measured on the SMD raw layer (sha256 over every
+   key and value sent, fixed `ingest_ts`):
+
+   | | records | identical output | wall time | peak RSS |
+   | --- | ---: | :---: | ---: | ---: |
+   | old, `--limit 20000` | 20,000 | – | 4 s | +2.2 GB |
+   | new, `--limit 20000` | 20,000 | yes | 2 s | +0.24 GB |
+   | old, all | 1,416,825 | – | 374 s | > 2.2 GB |
+   | new, all | 1,416,825 | yes | 87 s | +0.25 GB |
 
 ## To repeat the runs
 

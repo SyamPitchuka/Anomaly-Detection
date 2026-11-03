@@ -159,9 +159,76 @@ def test_fake_parquet_skipped_next_to_real_files(tmp_path):
     folder.mkdir(parents=True)
     pq.write_table(_raw_table(10), folder / "machine-1-1.parquet")
     pq.write_table(_raw_table(3), folder / "fake.parquet")   # same ids and times as the real rows
-    assert R.load_raw(tmp_path, "smd").num_rows == 10
+    assert [f.name for f in R.raw_files(tmp_path, "smd")] == ["machine-1-1.parquet"]
+    producer = MockProducer()
+    assert R.main(["--speedup", "0", "--root", str(tmp_path)], producer=producer) == 0
+    assert len(producer.messages) == 10
     (folder / "machine-1-1.parquet").unlink()
-    assert R.load_raw(tmp_path, "smd").num_rows == 3          # only fake data: still replayable
+    assert [f.name for f in R.raw_files(tmp_path, "smd")] == ["fake.parquet"]   # only fake data: still replayable
+
+
+def _machine_table(entity: str, n: int, step_min: int = 1, offset_min: int = 0) -> pa.Table:
+    """One machine's rows in event_time order, as the SMD raw files are stored."""
+    minutes = [offset_min + i * step_min for i in range(n)]
+    return pa.table(
+        {"entity_id": pa.array([entity] * n, pa.string()),
+         "event_time": pa.array([BASE_US + m * MINUTE_US for m in minutes], pa.int64()).cast(
+             pa.timestamp("us", tz="UTC")),
+         "metrics": pa.array([[("m00", float(m)), ("m01", 1.0)] for m in minutes], pa.map_(pa.string(), pa.float64())),
+         "attrs": pa.array([[("split", "train")]] * n, pa.map_(pa.string(), pa.string())),
+         "label": pa.array([None] * n, pa.int32())},
+        schema=S.arrow_schema("raw"))
+
+
+def _write_machines(folder, row_group_size=7):
+    folder.mkdir(parents=True)
+    tables = {"machine-1-1": _machine_table("machine-1-1", 60),
+              "machine-1-2": _machine_table("machine-1-2", 30, step_min=2),          # same times, other step
+              "machine-2-1": _machine_table("machine-2-1", 40, offset_min=15)}       # starts later
+    for name, t in tables.items():
+        pq.write_table(t, folder / f"{name}.parquet", row_group_size=row_group_size)
+    return tables
+
+
+def _keys(records):
+    return [(r[0], r[1]) for r in records]
+
+
+def test_merged_stream_matches_full_sort(tmp_path):
+    folder = tmp_path / "data/raw/source=smd"
+    tables = _write_machines(folder)
+    pq.write_table(_raw_table(10), folder / "machine-9-9.parquet")    # stored out of order: sorted on its own
+    files = R.raw_files(tmp_path, "smd")
+    assert not R.is_event_sorted(folder / "machine-9-9.parquet") and R.is_event_sorted(files[0])
+    got = list(R.merged_records(files, batch_rows=5))
+    full = pa.concat_tables([pq.read_table(f) for f in files])
+    expected = list(R.table_records(full))                             # old way: load everything, sort
+    assert _keys(got) == _keys(expected) and got == expected
+    assert len(got) == sum(t.num_rows for t in tables.values()) + 10
+    assert _keys(got) == sorted(_keys(got))
+
+
+def test_limit_reads_only_the_first_batches(tmp_path, monkeypatch):
+    folder = tmp_path / "data/raw/source=smd"
+    _write_machines(folder, row_group_size=10)
+    read = []
+    real_iter = R._iter_batches
+
+    def counting(path, batch_rows):
+        for batch in real_iter(path, batch_rows):
+            read.append(batch.num_rows)
+            yield batch
+
+    monkeypatch.setattr(R, "_iter_batches", counting)
+    producer = MockProducer()
+    sent = R.replay(producer, R.merged_records(R.raw_files(tmp_path, "smd"), batch_rows=5), "smd",
+                    speedup=0, limit=12, out=lambda *a, **k: None)
+    assert sent == 12
+    # 130 rows on disk; 12 records need at most a couple of 5-row batches per file
+    assert sum(read) <= 30, read
+    times = [json.loads(m[2])["event_time"] for m in producer.messages]
+    # machine-1-1 every minute + machine-1-2 every 2 minutes: 3 records per 2 minutes, 12th at minute 7
+    assert times == sorted(times) and times[-1] == "2026-01-01T00:07:00.000Z"
 
 
 def test_main_fails_without_raw_data(tmp_path):
