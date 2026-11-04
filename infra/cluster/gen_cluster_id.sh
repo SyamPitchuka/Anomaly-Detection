@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate the KRaft cluster id once and store it in cluster.env (same id on all 3 brokers).
+# Generate the KRaft cluster id once and store it in cluster.env (same id on every broker, 1 or 3).
 # Runs on the admin machine (needs only bash, base64, sed). Safe to re-run: it never overwrites an id.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

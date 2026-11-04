@@ -34,10 +34,11 @@ SPARK_DIST="spark-${SPARK_VERSION}-bin-${SPARK_HADOOP_PROFILE}"
 SPARK_HOME="/opt/spark"
 
 # ---- derived values -----------------------------------------------------------------------
-# Number of Kafka brokers (containers on KAFKA_HOST): 1 for the small trial cluster, 3 for the full layout.
+# Number of Kafka brokers (containers on KAFKA_HOST): 1 for the small trial cluster (default, same as cluster.env.example),
+# 3 for the full layout. A cluster.env without the setting must not silently put 3 brokers on a 2 vCPU / 8 GB master.
 # contracts/topics.yaml asks for replication_cluster = 3; with fewer brokers the topic tools cap the replication
 # factor at the broker count (contracts/ itself is never edited).
-KAFKA_BROKER_COUNT="${KAFKA_BROKER_COUNT:-3}"
+KAFKA_BROKER_COUNT="${KAFKA_BROKER_COUNT:-1}"
 KAFKA_REPLICATION=$((KAFKA_BROKER_COUNT < 3 ? KAFKA_BROKER_COUNT : 3))   # default.replication.factor of the brokers
 KAFKA_MIN_ISR=$((KAFKA_REPLICATION >= 3 ? 2 : 1))                        # min.insync.replicas (2 only when RF is 3)
 KAFKA_PORT_BASE="${KAFKA_PORT_BASE:-9092}"

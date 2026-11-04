@@ -49,8 +49,8 @@ az account set --subscription "<your subscription name or id>"
 ### Region, sizes and quota
 
 ```bash
-LOC=indiasouthcentral
-az account list-locations --query "[?name=='$LOC'].{name:name,display:displayName}" -o table   # confirms the region name for your account
+LOC=$(az group show -n spark-rg --query location -o tsv)     # the VMs must be in the region of spark-rg / spark-vnet
+echo "$LOC"                                                  # expected: indiasouthcentral
 az vm list-usage -l "$LOC" -o table | grep -Ei "Total Regional|standardDASv4Family|standardDSv4Family"
 az vm list-skus -l "$LOC" --size Standard_D2as_v4 -o table     # "Restrictions" column must be empty
 az vm list-skus -l "$LOC" --size Standard_D2s_v4 -o table
@@ -60,7 +60,7 @@ Needed: **2 vCPUs** in the `standardDASv4Family`, **4 vCPUs** in the `standardDS
 else running in those families. If a family quota is too low, use another 2 vCPU / 8 GiB size that you do have (for example `Standard_D2s_v5`
 for all three); the profile `vm_8gb_2cpu` only depends on 2 vCPU / 8 GiB.
 
-If `$LOC` is not your account's region name, use the one from `az group show -n spark-rg --query location -o tsv`.
+`$LOC` is read from `spark-rg` instead of being typed, so the VMs always land in the region of the existing group and VNet.
 
 ## 1. Variables and SSH key
 
@@ -69,7 +69,7 @@ The resource group and the virtual network already exist; they are not created h
 ```bash
 RG=spark-rg
 VNET=spark-vnet
-LOC=indiasouthcentral                                   # must match: az group show -n "$RG" --query location -o tsv
+LOC=$(az group show -n "$RG" --query location -o tsv)   # region of the existing group (indiasouthcentral)
 ADMIN_USER=azureuser
 IMAGE=Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest   # Ubuntu 22.04
 KEY="$HOME/.ssh/azure_cluster"
@@ -201,8 +201,9 @@ This `~/Anomaly-Detection/.venv` is only for the client tools (Ubuntu's Python 3
 ```bash
 cd ~/Anomaly-Detection
 cp infra/cluster/cluster.env.example infra/cluster/cluster.env
-# NFS_NETWORK = the CIDR of the subnet the VMs are in (SUBNET_CIDR from section 1; copy the value, this shell does not have the variable)
-sed -i 's|^NFS_NETWORK=.*|NFS_NETWORK=<subnet CIDR from section 1>|' infra/cluster/cluster.env
+# NFS_NETWORK = the CIDR of the subnet this VM is in, read from its own route table (the same subnet as spark-w1 and spark-w2)
+SUBNET_CIDR=$(ip -4 route show dev eth0 proto kernel scope link | awk 'NR==1 {print $1}'); echo "$SUBNET_CIDR"
+sed -i "s|^NFS_NETWORK=.*|NFS_NETWORK=${SUBNET_CIDR}|" infra/cluster/cluster.env
 grep -E '^(VM_PROFILE|KAFKA_HOST|KAFKA_BROKER_COUNT|SPARK_MASTER_HOST|SPARK_WORKER_HOSTS|NFS_SERVER_HOST|SSH_USER|NFS_NETWORK)=' infra/cluster/cluster.env
 bash infra/cluster/gen_cluster_id.sh                                       # writes KAFKA_CLUSTER_ID once
 ```
