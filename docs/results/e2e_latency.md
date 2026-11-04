@@ -1,5 +1,28 @@
 # End-to-end latency: Kafka -> score_job
 
+## Final results (Linux, Azure spark-master)
+
+Ubuntu 22.04, Standard_D2as_v4 (2 vCPU, 8 GB), single node, `local[2]`, 2 shuffle partitions, 5 s trigger,
+Kafka 3.7 single broker in Docker on the same VM. Full table and chart: [e2e_latency_linux.md](e2e_latency_linux.md).
+
+| speed-up | records | windows | total p50 / p95 / max (s) | processing p95 (s) | peak lag (records) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100x | 56,000 | 11,116 | 11.5 / 13.5 / 14.9 | 3.5 | 448 |
+| 500x | 280,000 | 55,916 | 5.6 / 7.9 / 11.1 | 2.3 | 2,268 |
+| max | 400,000 | 79,932 | 7.8 / 18.2 / 23.9 | 10.4 | 71,641 |
+
+At max speed, ≈1,740 records/s saturates the 2 CPUs: this is the single-node throughput limit and the
+motivation for the E2 scaling experiment.
+
+The processing p95 < 10 s target is met at 100x and 500x. Total latency adds the 5 s trigger and the
+watermark wait (10 event-min = 6 s at 100x, 1.2 s at 500x), which is why 500x has the lower total.
+Per-batch time is 2.1–2.4 s on Linux vs 15–19 s on the Windows laptop, confirming the worker-restart
+finding below.
+
+KMeans and PCA retrained on the VM reproduce E1 exactly (0.596 / 0.554, same flagged counts).
+
+## Windows laptop (diagnostic, not final)
+
 Measured on 2026-11-03 with `python experiments/e2e_latency_runs.py`, report by `python src/streaming/latency_report.py`.
 Each run: `src/producer/replay.py --source smd --speedup S --limit N` and
 `src/streaming/score_job.py --input kafka --reset` started together on an emptied `telemetry.smd` topic
