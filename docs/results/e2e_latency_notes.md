@@ -123,7 +123,7 @@ and `local[4]` starts 4 new ones per batch, about 1.1 GB, matching the ~1 GB dip
 startup before any scoring, and 14–19 s of `triggerExecution` was measured at `local[2]`. **Processing
 p95 < 10 s cannot be reached on Windows with the current design**, whatever the trigger. On Linux (the cloud
 VMs, or Spark inside a Linux container) the daemon forks workers and reuse works: after the first batch, a
-batch should cost the scoring time plus Spark's own overhead. This has not been measured yet.
+batch should cost the scoring time plus Spark's own overhead. Now measured: see "Final results (Linux, Azure spark-master)" at the top of `e2e_latency.md`.
 
 **Proposed fixes, not applied (each bigger than a one-liner):**
 1. **Run the latency experiment on Linux** (cloud VMs, or a Spark container next to Kafka in Docker). It is

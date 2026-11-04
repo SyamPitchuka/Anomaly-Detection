@@ -11,13 +11,15 @@ Kafka 3.7 single broker in Docker on the same VM. Full table and chart: [e2e_lat
 | 500x | 280,000 | 55,916 | 5.6 / 7.9 / 11.1 | 2.3 | 2,268 |
 | max | 400,000 | 79,932 | 7.8 / 18.2 / 23.9 | 10.4 | 71,641 |
 
-At max speed, ≈1,740 records/s saturates the 2 CPUs: this is the single-node throughput limit and the
-motivation for the E2 scaling experiment.
+At max speed, ≈3,600 records/s (400,000 records drained in ≈1.8 min; the 230 s wall time includes the 120 s
+`--idle-stop` wait) saturates the 2 CPUs: this is the single-node throughput limit and the motivation for the
+E2 scaling experiment. The rate is read from the chart (lag reaches 0 at ≈1.8 min), since the VM's `lag.csv`
+is not in this repo.
 
 The processing p95 < 10 s target is met at 100x and 500x. Total latency adds the 5 s trigger and the
-watermark wait (10 event-min = 6 s at 100x, 1.2 s at 500x), which is why 500x has the lower total.
-Per-batch time is 2.1–2.4 s on Linux vs 15–19 s on the Windows laptop, confirming the worker-restart
-finding below.
+watermark wait (11 event-min = 6.6 s at 100x, 1.32 s at 500x), which is why 500x has the lower total.
+Batch run time p50 is 1.8–2.4 s at 100x/500x (4.7 s at max speed) on Linux vs 15–19 s on the Windows laptop,
+confirming the worker-restart finding below.
 
 KMeans and PCA retrained on the VM reproduce E1 exactly (0.596 / 0.554, same flagged counts).
 
@@ -199,7 +201,7 @@ and `local[4]` starts 4 new ones per batch, about 1.1 GB, matching the ~1 GB dip
 startup before any scoring, and 14–19 s of `triggerExecution` was measured at `local[2]`. **Processing
 p95 < 10 s cannot be reached on Windows with the current design**, whatever the trigger. On Linux (the cloud
 VMs, or Spark inside a Linux container) the daemon forks workers and reuse works: after the first batch, a
-batch should cost the scoring time plus Spark's own overhead. This has not been measured yet.
+batch should cost the scoring time plus Spark's own overhead. Now measured: see "Final results (Linux, Azure spark-master)" at the top of `e2e_latency.md`.
 
 **Proposed fixes, not applied (each bigger than a one-liner):**
 1. **Run the latency experiment on Linux** (cloud VMs, or a Spark container next to Kafka in Docker). It is

@@ -5,6 +5,7 @@ Run from the repo root, with Kafka up (python tools/check_spark_kafka.py):
     python experiments/e2e_latency_runs.py --runs 100:56000         # speedup:limit pairs
     python experiments/e2e_latency_runs.py --master "local[4]"      # score_job master (default local[4])
     python experiments/e2e_latency_runs.py --runs 100:56000 --trigger "5 seconds" --tag t5
+    python experiments/e2e_latency_runs.py --hardware "Azure Standard_D2as_v4 (2 vCPU, 8 GB)"
 then  python src/streaming/latency_report.py
 
 Per run (speedup S, limit N):
@@ -44,7 +45,14 @@ DEFAULT_RUNS = ["100:56000", "500:280000", "0:400000"]
 CAP_S = 25 * 60
 SAMPLE_S = 5
 MB = 2 ** 20
-HARDWARE = "Laptop: i5-13420H (12 threads), 16 GB RAM, Windows 11, Kafka 3.7.0 in Docker Desktop."
+
+
+def hardware_text(note: str | None = None) -> str:
+    """The host of this run for meta.json and the report: detected, after the optional --hardware text."""
+    import psutil
+    host = (f"{platform.platform()}, {os.cpu_count()} logical CPUs, "
+            f"{psutil.virtual_memory().total / 2 ** 30:.1f} GB RAM, Python {platform.python_version()}")
+    return f"{note} (detected: {host})." if note else f"Detected host: {host}."
 
 
 def recreate_topic(topic: str) -> None:
@@ -99,7 +107,7 @@ def _kill_tree(proc) -> None:
 
 def run_once(speedup: float, limit: int, trigger: str, tag: str, order: int, min_free_mb: float,
              idle_s: float, master: str = "local[4]", shuffle_partitions: int = 4,
-             replay_root: Path | None = None) -> dict:
+             replay_root: Path | None = None, hardware: str | None = None) -> dict:
     import psutil
     from confluent_kafka import Consumer
 
@@ -109,7 +117,7 @@ def run_once(speedup: float, limit: int, trigger: str, tag: str, order: int, min
     out.mkdir(parents=True)
     meta = {"order": order, "speedup": speedup, "limit": limit, "trigger": trigger, "master": master,
             "shuffle_partitions": shuffle_partitions, "status": "ok",
-            "hardware": HARDWARE, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "notes": []}
+            "hardware": hardware_text(hardware), "started": time.strftime("%Y-%m-%d %H:%M:%S"), "notes": []}
     print(f"run {name}: speedup {speedup:g}, limit {limit:,}, trigger {trigger}", flush=True)
     free = psutil.virtual_memory().available / MB
     if free < min_free_mb:
@@ -222,13 +230,16 @@ def main(argv=None) -> int:
     ap.add_argument("--replay-root", type=Path, default=None,
                     help="replay.py --root (a folder with data/raw/source=smd); replay loads every file there "
                          "into memory, so a small subset saves RAM")
+    ap.add_argument("--hardware", default=None,
+                    help="free text describing the machine, e.g. the cloud VM size; saved in meta.json and "
+                         "shown in the report next to the detected platform")
     args = ap.parse_args(argv)
     print(platform.platform(), flush=True)
     for i, spec in enumerate(args.runs):
         sp, lim = spec.split(":")
         meta = run_once(float(sp), int(lim), args.trigger, args.tag, args.order_start + i,
                         args.min_free_gb * 1024, args.idle_stop, args.master, args.shuffle_partitions,
-                        args.replay_root)
+                        args.replay_root, args.hardware)
         if meta["status"].startswith("out of memory"):
             print("stopping: out of memory", flush=True)
             return 1

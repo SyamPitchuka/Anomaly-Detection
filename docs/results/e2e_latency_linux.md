@@ -3,7 +3,7 @@
 Measured on 2026-11-04 with `python experiments/e2e_latency_runs.py`, report by `python src/streaming/latency_report.py`.
 Each run: `src/producer/replay.py --source smd --speedup S --limit N` and
 `src/streaming/score_job.py --input kafka --reset` started together on an emptied `telemetry.smd` topic
-(`OMP_NUM_THREADS=1`). Laptop: i5-13420H (12 threads), 16 GB RAM, Windows 11, Kafka 3.7.0 in Docker Desktop.
+(`OMP_NUM_THREADS=1`). Azure Standard_D2as_v4 (2 vCPU, 8 GB), Ubuntu 22.04, Python 3.11.18, Spark 3.5.1 local[2], Kafka 3.7 single broker in Docker on the same VM.
 
 | run | speed-up | master | status | records in topic | windows | total p50 / p95 / max (s) | processing p50 / p95 / max (s) | batch run time p50 / max (s) | watermark wait p50 / p95 (s) | wait 11 min / speed-up (s) | peak lag (records) | p95 total < 10 s | p95 processing < 10 s |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: | :---: |
