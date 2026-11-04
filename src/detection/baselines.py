@@ -109,12 +109,12 @@ def raw_files(raw_dir: Path, sample: int | None) -> list[Path]:
     return files
 
 
-def build_windows(raw: DataFrame, metrics: list[str]) -> DataFrame:
-    """5-minute window means, one column per metric (null = no value in the window).
+def build_windows(raw: DataFrame, metrics: list[str], window: str = WINDOW) -> DataFrame:
+    """Window means (5 minutes unless `window` says otherwise), one column per metric (null = no value in the window).
 
     Columns: entity_id, window_start, window_end, ws_us (window_start in microseconds), split, label, *metrics.
     """
-    rows = (raw.withColumn("w", F.window("event_time", WINDOW))
+    rows = (raw.withColumn("w", F.window("event_time", window))
             .select("entity_id", F.col("w.start").alias("window_start"), F.col("w.end").alias("window_end"),
                     "metrics", F.coalesce(F.col("attrs")["split"] == "test", F.lit(False)).alias("is_test"),
                     "label"))

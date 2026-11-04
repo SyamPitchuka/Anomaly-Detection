@@ -94,8 +94,8 @@ ADAPTIVE_PERCENTILE = 99
 
 # ---------------------------------------------------------------- windows
 
-def build_windows(table: pa.Table, metrics: list[str],
-                  aggs: tuple[str, ...] = ("mean",)) -> tuple[pd.DataFrame, np.ndarray]:
+def build_windows(table: pa.Table, metrics: list[str], aggs: tuple[str, ...] = ("mean",),
+                  window_us: int = WINDOW_US) -> tuple[pd.DataFrame, np.ndarray]:
     """5-minute window aggregates (mean, and max if asked) of one or more machines' raw rows.
 
     Returns (meta, X): meta has entity_id, window_start (int64 microseconds UTC), split, label
@@ -120,7 +120,7 @@ def build_windows(table: pa.Table, metrics: list[str],
     split = pc.map_lookup(table["attrs"].combine_chunks(), "split", "first").to_numpy(zero_copy_only=False)
     df = pd.DataFrame(values, columns=metrics)
     df["entity_id"] = table["entity_id"].to_numpy(zero_copy_only=False)
-    df["window_start"] = event_us - np.mod(event_us, WINDOW_US)
+    df["window_start"] = event_us - np.mod(event_us, window_us)
     df["is_test"] = split == "test"
     df["label"] = table["label"].to_pandas().astype("float64")
 
@@ -140,8 +140,8 @@ def feature_names(metrics: list[str], aggs: tuple[str, ...]) -> list[str]:
     return [f"{m}_{agg}" for agg in aggs for m in metrics]
 
 
-def load_windows(raw_dir: Path, metrics: list[str], sample: int | None,
-                 aggs: tuple[str, ...] = ("mean",)) -> tuple[pd.DataFrame, np.ndarray]:
+def load_windows(raw_dir: Path, metrics: list[str], sample: int | None, aggs: tuple[str, ...] = ("mean",),
+                 window_us: int = WINDOW_US) -> tuple[pd.DataFrame, np.ndarray]:
     files = sorted(p for p in raw_dir.glob("*.parquet") if p.name not in SKIP_FILES)
     if sample:
         files = files[:sample]
@@ -149,7 +149,7 @@ def load_windows(raw_dir: Path, metrics: list[str], sample: int | None,
         raise FileNotFoundError(f"no machine Parquet files under {raw_dir}")
     metas, xs = [], []
     for path in files:
-        meta, X = build_windows(pq.read_table(path, schema=S.arrow_schema("raw")), metrics, aggs)
+        meta, X = build_windows(pq.read_table(path, schema=S.arrow_schema("raw")), metrics, aggs, window_us)
         metas.append(meta)
         xs.append(X)
     return pd.concat(metas, ignore_index=True), np.vstack(xs)
@@ -378,12 +378,12 @@ def scores_table(meta: pd.DataFrame, ae_score: np.ndarray, ae_flag: np.ndarray, 
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
-def _median_minutes(delays: list[int]) -> float:
-    return float(np.median(delays)) * WINDOW_MINUTES if delays else float("nan")
+def _median_minutes(delays: list[int], window_minutes: int = WINDOW_MINUTES) -> float:
+    return float(np.median(delays)) * window_minutes if delays else float("nan")
 
 
-def evaluate(meta: pd.DataFrame, ae_flag: np.ndarray,
-             ae_score: np.ndarray | None = None) -> tuple[pd.DataFrame, dict]:
+def evaluate(meta: pd.DataFrame, ae_flag: np.ndarray, ae_score: np.ndarray | None = None,
+             window_minutes: int = WINDOW_MINUTES) -> tuple[pd.DataFrame, dict]:
     """Per-machine metrics on time-ordered test windows, plus overall metrics.
 
     Overall = TP/FP/FN summed over machines: the machines' sequences are concatenated with one
@@ -406,8 +406,8 @@ def evaluate(meta: pd.DataFrame, ae_flag: np.ndarray,
                      "ev_p": ev["precision"], "ev_r": ev["recall"], "ev_f1": ev["f1"],
                      "caught": comp["events_detected"], "alarm_p": comp["alarm_precision"],
                      "comp_f1": comp["composite_f1"],
-                     "fa_day": false_alarms_per_day(t, p, WINDOW_MINUTES),
-                     "delay_min": _median_minutes(delays),
+                     "fa_day": false_alarms_per_day(t, p, window_minutes),
+                     "delay_min": _median_minutes(delays, window_minutes),
                      "pr_auc": pr_auc(t, s) if ae_score is not None else float("nan")})
         all_t += [0] + t.tolist()
         all_p += [0] + p.tolist()
@@ -415,8 +415,8 @@ def evaluate(meta: pd.DataFrame, ae_flag: np.ndarray,
     test_t, test_p = df["label"].astype(int).to_numpy(), df["pred"].to_numpy()
     overall = {"point": point_metrics(all_t, all_p), "event": event_metrics(all_t, all_p),
                "composite": composite_metrics(all_t, all_p),
-               "fa_day": false_alarms_per_day(test_t, test_p, WINDOW_MINUTES),
-               "delay_min": _median_minutes(all_delays),
+               "fa_day": false_alarms_per_day(test_t, test_p, window_minutes),
+               "delay_min": _median_minutes(all_delays, window_minutes),
                "pr_auc": pr_auc(test_t, df["score"].to_numpy()) if ae_score is not None else float("nan")}
     return pd.DataFrame(rows), overall
 

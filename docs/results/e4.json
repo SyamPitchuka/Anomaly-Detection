@@ -1,0 +1,1467 @@
+{
+  "experiment": "E4",
+  "source": "smd",
+  "sample": null,
+  "windows_min": [
+    1,
+    5,
+    15
+  ],
+  "recenter_minutes": 120,
+  "adaptive_minutes": 1440,
+  "threshold": "p99.5 of train score x 1.1, global",
+  "ae_seed": 42,
+  "is_anomaly_rule": "ae_flag (contract rev C)",
+  "settings": [
+    {
+      "window_min": 1,
+      "train_windows": 708405,
+      "test_windows": 708420,
+      "kmeans_k": 5,
+      "kmeans_silhouette": 0.2542723327660315,
+      "pca_components": 16,
+      "pca_variance": 0.9000719551194826,
+      "threshold_tier2": 17.36914638539424,
+      "threshold_pca": 1.2920844077811728,
+      "ae_epochs": 46,
+      "ae_best_epoch": 41,
+      "threshold_ae": 1.4387147405976566,
+      "recenter": 120,
+      "adaptive": 1440,
+      "machines": 28,
+      "match": {
+        "windows": 708420,
+        "tier1_windows": 708420,
+        "ae_windows": 708420,
+        "tier1_missing": 0,
+        "ae_missing": 0,
+        "label_mismatch": 0
+      },
+      "seconds": 913.7650514999987,
+      "seconds_baselines": 214.93953729997156,
+      "seconds_tier1": 148.21397660003277,
+      "seconds_ae": 548.234338899958
+    },
+    {
+      "window_min": 5,
+      "train_windows": 141669,
+      "test_windows": 141708,
+      "kmeans_k": 4,
+      "kmeans_silhouette": 0.23904463531813325,
+      "pca_components": 16,
+      "pca_variance": 0.9096333974949911,
+      "threshold_tier2": 17.599850658398786,
+      "threshold_pca": 1.0817210667867942,
+      "ae_epochs": 50,
+      "ae_best_epoch": 47,
+      "threshold_ae": 2.0329136800451666,
+      "recenter": 24,
+      "adaptive": 288,
+      "machines": 28,
+      "match": {
+        "windows": 141708,
+        "tier1_windows": 141708,
+        "ae_windows": 141708,
+        "tier1_missing": 0,
+        "ae_missing": 0,
+        "label_mismatch": 0
+      },
+      "seconds": 280.0631088000373,
+      "seconds_baselines": 112.10346180002671,
+      "seconds_tier1": 32.80086409999058,
+      "seconds_ae": 134.68394079996506
+    },
+    {
+      "window_min": 15,
+      "train_windows": 47216,
+      "test_windows": 47254,
+      "kmeans_k": 3,
+      "kmeans_silhouette": 0.23860875865458558,
+      "pca_components": 15,
+      "pca_variance": 0.902358307841128,
+      "threshold_tier2": 19.37832936614919,
+      "threshold_pca": 1.3541957975030723,
+      "ae_epochs": 50,
+      "ae_best_epoch": 50,
+      "threshold_ae": 2.5763787024624696,
+      "recenter": 8,
+      "adaptive": 96,
+      "machines": 28,
+      "match": {
+        "windows": 47254,
+        "tier1_windows": 47254,
+        "ae_windows": 47254,
+        "tier1_missing": 0,
+        "ae_missing": 0,
+        "label_mismatch": 0
+      },
+      "seconds": 144.01470249996055,
+      "seconds_baselines": 85.9499744999921,
+      "seconds_tier1": 13.193593700008933,
+      "seconds_ae": 44.728278999973554
+    }
+  ],
+  "detectors": [
+    {
+      "window_min": 1,
+      "detector": "Tier 1 robust z-score",
+      "key": "tier1",
+      "composite_f1": 0.09816247067308383,
+      "faults_caught": 322,
+      "faults": 327,
+      "event_recall": 0.9847094801223242,
+      "alarm_precision": 0.05165594134353357,
+      "false_alarms_per_machine_day": 1005.9042940628441,
+      "false_alarm_minutes_per_machine_day": 1005.9042940628441,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 0.2546583850931677,
+      "pr_auc": 0.11697677665780315,
+      "point_f1": 0.09779378952294915,
+      "event_f1": 0.10627542976643893,
+      "windows_flagged": 521818,
+      "windows": 708420,
+      "ref_faults_caught": 324,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 1,
+      "detector": "Tier 2 KMeans (recenter 120 min)",
+      "key": "kmeans",
+      "composite_f1": 0.6718663520372748,
+      "faults_caught": 298,
+      "faults": 327,
+      "event_recall": 0.9113149847094801,
+      "alarm_precision": 0.5320657214787333,
+      "false_alarms_per_machine_day": 14.356906919623952,
+      "false_alarm_minutes_per_machine_day": 14.356906919623952,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 7.151006711409396,
+      "pr_auc": 0.31252098331079453,
+      "point_f1": 0.36063586151151833,
+      "event_f1": 0.8825356984343196,
+      "windows_flagged": 15094,
+      "windows": 708420,
+      "ref_faults_caught": 297,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 1,
+      "detector": "Tier 2b PCA (recenter 120 min)",
+      "key": "pca",
+      "composite_f1": 0.6287363475928698,
+      "faults_caught": 251,
+      "faults": 327,
+      "event_recall": 0.7675840978593272,
+      "alarm_precision": 0.532426153335546,
+      "false_alarms_per_machine_day": 14.318285762683155,
+      "false_alarm_minutes_per_machine_day": 14.318285762683155,
+      "median_delay_min": 1.0,
+      "mean_delay_min": 11.904382470119522,
+      "pr_auc": 0.30900955678947806,
+      "point_f1": 0.36042148778898647,
+      "event_f1": 0.8429364198509594,
+      "windows_flagged": 15065,
+      "windows": 708420,
+      "ref_faults_caught": 251,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 1,
+      "detector": "Tier 3 AE v2",
+      "key": "ae_v2",
+      "composite_f1": 0.5131894153063886,
+      "faults_caught": 215,
+      "faults": 327,
+      "event_recall": 0.6574923547400612,
+      "alarm_precision": 0.42082825822168085,
+      "false_alarms_per_machine_day": 5.79927161853138,
+      "false_alarm_minutes_per_machine_day": 5.79927161853138,
+      "median_delay_min": 1.0,
+      "mean_delay_min": 17.427906976744186,
+      "pr_auc": 0.3047574450021002,
+      "point_f1": 0.12062845504800697,
+      "event_f1": 0.8807527030773495,
+      "windows_flagged": 4926,
+      "windows": 708420,
+      "ref_faults_caught": 215,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 1,
+      "detector": "Final rule: is_anomaly = ae_flag",
+      "key": "is_anomaly",
+      "composite_f1": 0.5131894153063886,
+      "faults_caught": 215,
+      "faults": 327,
+      "event_recall": 0.6574923547400612,
+      "alarm_precision": 0.42082825822168085,
+      "false_alarms_per_machine_day": 5.79927161853138,
+      "false_alarm_minutes_per_machine_day": 5.79927161853138,
+      "median_delay_min": 1.0,
+      "mean_delay_min": 17.427906976744186,
+      "pr_auc": 0.3047574450021002,
+      "point_f1": 0.12062845504800697,
+      "event_f1": 0.8807527030773495,
+      "windows_flagged": 4926,
+      "windows": 708420,
+      "ref_faults_caught": 215,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 5,
+      "detector": "Tier 1 robust z-score",
+      "key": "tier1",
+      "composite_f1": 0.09935521149588417,
+      "faults_caught": 323,
+      "faults": 326,
+      "event_recall": 0.99079754601227,
+      "alarm_precision": 0.052299869295088716,
+      "false_alarms_per_machine_day": 215.14438140401387,
+      "false_alarm_minutes_per_machine_day": 1075.7219070200695,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 0.4953560371517028,
+      "pr_auc": 0.13619755779693749,
+      "point_f1": 0.09914886756107702,
+      "event_f1": 0.10387939426259343,
+      "windows_flagged": 111702,
+      "windows": 141708,
+      "ref_faults_caught": 323,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 5,
+      "detector": "Tier 2 KMeans (recenter 120 min)",
+      "key": "kmeans",
+      "composite_f1": 0.595855984388196,
+      "faults_caught": 215,
+      "faults": 326,
+      "event_recall": 0.6595092024539877,
+      "alarm_precision": 0.5434083601286174,
+      "false_alarms_per_machine_day": 3.4631213481243117,
+      "false_alarm_minutes_per_machine_day": 17.315606740621558,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 10.581395348837209,
+      "pr_auc": 0.35320726252191437,
+      "point_f1": 0.4108173807353388,
+      "event_f1": 0.8082940908400426,
+      "windows_flagged": 3732,
+      "windows": 141708,
+      "ref_faults_caught": 215,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 5,
+      "detector": "Tier 2b PCA (recenter 120 min)",
+      "key": "pca",
+      "composite_f1": 0.5542326157568286,
+      "faults_caught": 183,
+      "faults": 326,
+      "event_recall": 0.5613496932515337,
+      "alarm_precision": 0.5472937467157121,
+      "false_alarms_per_machine_day": 3.5017359640951815,
+      "false_alarm_minutes_per_machine_day": 17.50867982047591,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 7.923497267759563,
+      "pr_auc": 0.3524365742817071,
+      "point_f1": 0.41881974464662713,
+      "event_f1": 0.7374167134944207,
+      "windows_flagged": 3806,
+      "windows": 141708,
+      "ref_faults_caught": 183,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 5,
+      "detector": "Tier 3 AE v2",
+      "key": "ae_v2",
+      "composite_f1": 0.5231549486639478,
+      "faults_caught": 179,
+      "faults": 326,
+      "event_recall": 0.549079754601227,
+      "alarm_precision": 0.4995678478824546,
+      "false_alarms_per_machine_day": 1.1767296130070284,
+      "false_alarm_minutes_per_machine_day": 5.883648065035142,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 32.12290502793296,
+      "pr_auc": 0.35507733247944834,
+      "point_f1": 0.15839956152370513,
+      "event_f1": 0.8276343335659456,
+      "windows_flagged": 1157,
+      "windows": 141708,
+      "ref_faults_caught": 179,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 5,
+      "detector": "Final rule: is_anomaly = ae_flag",
+      "key": "is_anomaly",
+      "composite_f1": 0.5231549486639478,
+      "faults_caught": 179,
+      "faults": 326,
+      "event_recall": 0.549079754601227,
+      "alarm_precision": 0.4995678478824546,
+      "false_alarms_per_machine_day": 1.1767296130070284,
+      "false_alarm_minutes_per_machine_day": 5.883648065035142,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 32.12290502793296,
+      "pr_auc": 0.35507733247944834,
+      "point_f1": 0.15839956152370513,
+      "event_f1": 0.8276343335659456,
+      "windows_flagged": 1157,
+      "windows": 141708,
+      "ref_faults_caught": 179,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 15,
+      "detector": "Tier 1 robust z-score",
+      "key": "tier1",
+      "composite_f1": 0.1056861486298663,
+      "faults_caught": 324,
+      "faults": 326,
+      "event_recall": 0.9938650306748467,
+      "alarm_precision": 0.05581047638688389,
+      "false_alarms_per_machine_day": 74.4104626063402,
+      "false_alarm_minutes_per_machine_day": 1116.156939095103,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 0.5555555555555556,
+      "pr_auc": 0.11635938638940083,
+      "point_f1": 0.10545543107647344,
+      "event_f1": 0.11005830903790087,
+      "windows_flagged": 38792,
+      "windows": 47254,
+      "ref_faults_caught": 324,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 15,
+      "detector": "Tier 2 KMeans (recenter 120 min)",
+      "key": "kmeans",
+      "composite_f1": 0.4852979023905425,
+      "faults_caught": 151,
+      "faults": 326,
+      "event_recall": 0.46319018404907975,
+      "alarm_precision": 0.5096217650962177,
+      "false_alarms_per_machine_day": 1.5013332204681085,
+      "false_alarm_minutes_per_machine_day": 22.519998307021627,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 12.119205298013245,
+      "pr_auc": 0.362992347749594,
+      "point_f1": 0.4068874172185431,
+      "event_f1": 0.7033203967227253,
+      "windows_flagged": 1507,
+      "windows": 47254,
+      "ref_faults_caught": 151,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 15,
+      "detector": "Tier 2b PCA (recenter 120 min)",
+      "key": "pca",
+      "composite_f1": 0.4971298815539144,
+      "faults_caught": 154,
+      "faults": 326,
+      "event_recall": 0.4723926380368098,
+      "alarm_precision": 0.5246010638297872,
+      "false_alarms_per_machine_day": 1.4525754433487112,
+      "false_alarm_minutes_per_machine_day": 21.78863165023067,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 24.058441558441558,
+      "pr_auc": 0.35818833025712615,
+      "point_f1": 0.4183457051961824,
+      "event_f1": 0.6905179982440738,
+      "windows_flagged": 1504,
+      "windows": 47254,
+      "ref_faults_caught": 154,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 15,
+      "detector": "Tier 3 AE v2",
+      "key": "ae_v2",
+      "composite_f1": 0.4740714720328192,
+      "faults_caught": 141,
+      "faults": 326,
+      "event_recall": 0.4325153374233129,
+      "alarm_precision": 0.5244618395303327,
+      "false_alarms_per_machine_day": 0.4936724933338976,
+      "false_alarm_minutes_per_machine_day": 7.4050874000084645,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 41.59574468085106,
+      "pr_auc": 0.37097758082150434,
+      "point_f1": 0.19287513494062608,
+      "event_f1": 0.7491905354919054,
+      "windows_flagged": 511,
+      "windows": 47254,
+      "ref_faults_caught": 141,
+      "ref_faults": 326
+    },
+    {
+      "window_min": 15,
+      "detector": "Final rule: is_anomaly = ae_flag",
+      "key": "is_anomaly",
+      "composite_f1": 0.4740714720328192,
+      "faults_caught": 141,
+      "faults": 326,
+      "event_recall": 0.4325153374233129,
+      "alarm_precision": 0.5244618395303327,
+      "false_alarms_per_machine_day": 0.4936724933338976,
+      "false_alarm_minutes_per_machine_day": 7.4050874000084645,
+      "median_delay_min": 0.0,
+      "mean_delay_min": 41.59574468085106,
+      "pr_auc": 0.37097758082150434,
+      "point_f1": 0.19287513494062608,
+      "event_f1": 0.7491905354919054,
+      "windows_flagged": 511,
+      "windows": 47254,
+      "ref_faults_caught": 141,
+      "ref_faults": 326
+    }
+  ],
+  "check_e1": {
+    "passed": true,
+    "note": "full run: every detector row of e1.json, tolerance 0.001",
+    "items": [
+      {
+        "detector": "tier1",
+        "item": "composite_f1",
+        "e4": 0.09935521149588417,
+        "e1": 0.09935521149588417,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "faults_caught",
+        "e4": 323,
+        "e1": 323,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "faults",
+        "e4": 326,
+        "e1": 326,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "alarm_precision",
+        "e4": 0.052299869295088716,
+        "e1": 0.052299869295088716,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "false_alarms_per_machine_day",
+        "e4": 215.14438140401387,
+        "e1": 215.14438140401387,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "median_delay_min",
+        "e4": 0.0,
+        "e1": 0.0,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "pr_auc",
+        "e4": 0.13619755779693749,
+        "e1": 0.13619755779693749,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "windows_flagged",
+        "e4": 111702,
+        "e1": 111702,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "tier1",
+        "item": "windows",
+        "e4": 141708,
+        "e1": 141708,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "composite_f1",
+        "e4": 0.595855984388196,
+        "e1": 0.595855984388196,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "faults_caught",
+        "e4": 215,
+        "e1": 215,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "faults",
+        "e4": 326,
+        "e1": 326,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "alarm_precision",
+        "e4": 0.5434083601286174,
+        "e1": 0.5434083601286174,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "false_alarms_per_machine_day",
+        "e4": 3.4631213481243117,
+        "e1": 3.4631213481243117,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "median_delay_min",
+        "e4": 0.0,
+        "e1": 0.0,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "pr_auc",
+        "e4": 0.35320726252191437,
+        "e1": 0.35320726252191437,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "windows_flagged",
+        "e4": 3732,
+        "e1": 3732,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "kmeans",
+        "item": "windows",
+        "e4": 141708,
+        "e1": 141708,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "composite_f1",
+        "e4": 0.5542326157568286,
+        "e1": 0.5542326157568286,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "faults_caught",
+        "e4": 183,
+        "e1": 183,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "faults",
+        "e4": 326,
+        "e1": 326,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "alarm_precision",
+        "e4": 0.5472937467157121,
+        "e1": 0.5472937467157121,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "false_alarms_per_machine_day",
+        "e4": 3.5017359640951815,
+        "e1": 3.5017359640951815,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "median_delay_min",
+        "e4": 0.0,
+        "e1": 0.0,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "pr_auc",
+        "e4": 0.3524365742817071,
+        "e1": 0.3524365742817071,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "windows_flagged",
+        "e4": 3806,
+        "e1": 3806,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "pca",
+        "item": "windows",
+        "e4": 141708,
+        "e1": 141708,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "composite_f1",
+        "e4": 0.5231549486639478,
+        "e1": 0.5231549486639478,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "faults_caught",
+        "e4": 179,
+        "e1": 179,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "faults",
+        "e4": 326,
+        "e1": 326,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "alarm_precision",
+        "e4": 0.4995678478824546,
+        "e1": 0.4995678478824546,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "false_alarms_per_machine_day",
+        "e4": 1.1767296130070284,
+        "e1": 1.1767296130070284,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "median_delay_min",
+        "e4": 0.0,
+        "e1": 0.0,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "pr_auc",
+        "e4": 0.35507733247944834,
+        "e1": 0.35507733247944834,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "windows_flagged",
+        "e4": 1157,
+        "e1": 1157,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "ae_v2",
+        "item": "windows",
+        "e4": 141708,
+        "e1": 141708,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "composite_f1",
+        "e4": 0.5231549486639478,
+        "e1": 0.5231549486639478,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "faults_caught",
+        "e4": 179,
+        "e1": 179,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "faults",
+        "e4": 326,
+        "e1": 326,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "alarm_precision",
+        "e4": 0.4995678478824546,
+        "e1": 0.4995678478824546,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "false_alarms_per_machine_day",
+        "e4": 1.1767296130070284,
+        "e1": 1.1767296130070284,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "median_delay_min",
+        "e4": 0.0,
+        "e1": 0.0,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "pr_auc",
+        "e4": 0.35507733247944834,
+        "e1": 0.35507733247944834,
+        "diff": 0.0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "windows_flagged",
+        "e4": 1157,
+        "e1": 1157,
+        "diff": 0,
+        "ok": true
+      },
+      {
+        "detector": "is_anomaly",
+        "item": "windows",
+        "e4": 141708,
+        "e1": 141708,
+        "diff": 0,
+        "ok": true
+      }
+    ]
+  },
+  "per_machine_composite_f1": {
+    "1": [
+      {
+        "machine": "machine-1-1",
+        "tier1": 0.20583740831295844,
+        "kmeans": 0.7540425531914893,
+        "pca": 0.8805166846071044,
+        "ae_v2": 0.576271186440678,
+        "is_anomaly": 0.576271186440678
+      },
+      {
+        "machine": "machine-1-2",
+        "tier1": 0.08285070785070785,
+        "kmeans": 0.4760672703751617,
+        "pca": 0.47714285714285715,
+        "ae_v2": 0.25246398786959817,
+        "is_anomaly": 0.25246398786959817
+      },
+      {
+        "machine": "machine-1-3",
+        "tier1": 0.06663947797716151,
+        "kmeans": 0.5656565656565656,
+        "pca": 0.22075055187637965,
+        "ae_v2": 0.39568345323741005,
+        "is_anomaly": 0.39568345323741005
+      },
+      {
+        "machine": "machine-1-4",
+        "tier1": 0.05895116060097433,
+        "kmeans": 0.5398773006134969,
+        "pca": 0.3056768558951965,
+        "ae_v2": 0.5882352941176471,
+        "is_anomaly": 0.5882352941176471
+      },
+      {
+        "machine": "machine-1-5",
+        "tier1": 0.012135147218496518,
+        "kmeans": 0.22009569377990432,
+        "pca": 0.15880322209436132,
+        "ae_v2": 0.37383177570093457,
+        "is_anomaly": 0.37383177570093457
+      },
+      {
+        "machine": "machine-1-6",
+        "tier1": 0.2821674726781158,
+        "kmeans": 0.9173223876686608,
+        "pca": 0.8883116883116884,
+        "ae_v2": 0.5409565695437053,
+        "is_anomaly": 0.5409565695437053
+      },
+      {
+        "machine": "machine-1-7",
+        "tier1": 0.28392102211567966,
+        "kmeans": 0.836854161364215,
+        "pca": 0.7696793002915452,
+        "ae_v2": 0.6747809152872444,
+        "is_anomaly": 0.6747809152872444
+      },
+      {
+        "machine": "machine-1-8",
+        "tier1": 0.06136653269287325,
+        "kmeans": 0.752136752136752,
+        "pca": 0.5971751412429379,
+        "ae_v2": 0.6900028003360403,
+        "is_anomaly": 0.6900028003360403
+      },
+      {
+        "machine": "machine-2-1",
+        "tier1": 0.1302118171683389,
+        "kmeans": 0.726067136344799,
+        "pca": 0.5609348914858097,
+        "ae_v2": 0.6055045871559632,
+        "is_anomaly": 0.6055045871559632
+      },
+      {
+        "machine": "machine-2-2",
+        "tier1": 0.26243455497382195,
+        "kmeans": 0.3714759535655058,
+        "pca": 0.29593094944512943,
+        "ae_v2": 0.49234135667396056,
+        "is_anomaly": 0.49234135667396056
+      },
+      {
+        "machine": "machine-2-3",
+        "tier1": 0.029101965468563366,
+        "kmeans": 0.8,
+        "pca": 0.8265754763067904,
+        "ae_v2": 0.7610208816705336,
+        "is_anomaly": 0.7610208816705336
+      },
+      {
+        "machine": "machine-2-4",
+        "tier1": 0.20343496205565167,
+        "kmeans": 0.965931863727455,
+        "pca": 0.887666299889967,
+        "ae_v2": 0.8415841584158417,
+        "is_anomaly": 0.8415841584158417
+      },
+      {
+        "machine": "machine-2-5",
+        "tier1": 0.17142857142857143,
+        "kmeans": 0.8584367001378224,
+        "pca": 0.9140271493212669,
+        "ae_v2": 0.9348191757779647,
+        "is_anomaly": 0.9348191757779647
+      },
+      {
+        "machine": "machine-2-6",
+        "tier1": 0.033316308490158326,
+        "kmeans": 0.5252173913043479,
+        "pca": 0.8250460405156538,
+        "ae_v2": 0.7878077373974208,
+        "is_anomaly": 0.7878077373974208
+      },
+      {
+        "machine": "machine-2-7",
+        "tier1": 0.08170323138441586,
+        "kmeans": 0.6681567575622113,
+        "pca": 0.622104063805545,
+        "ae_v2": 0.44871794871794873,
+        "is_anomaly": 0.44871794871794873
+      },
+      {
+        "machine": "machine-2-8",
+        "tier1": 0.01630462301888703,
+        "kmeans": 0.5842696629213483,
+        "pca": 0.6419753086419753,
+        "ae_v2": 0.23188405797101452,
+        "is_anomaly": 0.23188405797101452
+      },
+      {
+        "machine": "machine-2-9",
+        "tier1": 0.11842504807854516,
+        "kmeans": 0.8149445417396382,
+        "pca": 0.7805714285714286,
+        "ae_v2": 0.4641031340297844,
+        "is_anomaly": 0.4641031340297844
+      },
+      {
+        "machine": "machine-3-1",
+        "tier1": 0.022553207866682065,
+        "kmeans": 0.7340425531914894,
+        "pca": 0.736231884057971,
+        "ae_v2": 0.8272727272727274,
+        "is_anomaly": 0.8272727272727274
+      },
+      {
+        "machine": "machine-3-10",
+        "tier1": 0.08879079835321081,
+        "kmeans": 0.8735491753207085,
+        "pca": 0.3726708074534162,
+        "ae_v2": 0.3971631205673759,
+        "is_anomaly": 0.3971631205673759
+      },
+      {
+        "machine": "machine-3-11",
+        "tier1": 0.021558059774620286,
+        "kmeans": 0.30434782608695654,
+        "pca": 0.3006756756756757,
+        "ae_v2": 0.5446009389671361,
+        "is_anomaly": 0.5446009389671361
+      },
+      {
+        "machine": "machine-3-2",
+        "tier1": 0.12479027930731194,
+        "kmeans": 0.4245283018867924,
+        "pca": 0.4552845528455285,
+        "ae_v2": 0.17574021012416427,
+        "is_anomaly": 0.17574021012416427
+      },
+      {
+        "machine": "machine-3-3",
+        "tier1": 0.10675570366897497,
+        "kmeans": 0.5940000000000001,
+        "pca": 0.3728070175438597,
+        "ae_v2": 0.3,
+        "is_anomaly": 0.3
+      },
+      {
+        "machine": "machine-3-4",
+        "tier1": 0.08232957186932083,
+        "kmeans": 0.7410674900749891,
+        "pca": 0.7558588720061808,
+        "ae_v2": 0.281182408074982,
+        "is_anomaly": 0.281182408074982
+      },
+      {
+        "machine": "machine-3-5",
+        "tier1": 0.03822073264592056,
+        "kmeans": 0.3298025591051606,
+        "pca": 0.326088649996105,
+        "ae_v2": 0.4214978850460314,
+        "is_anomaly": 0.4214978850460314
+      },
+      {
+        "machine": "machine-3-6",
+        "tier1": 0.10381191508787947,
+        "kmeans": 0.7095588235294117,
+        "pca": 0.7421790722761595,
+        "ae_v2": 0.6893203883495146,
+        "is_anomaly": 0.6893203883495146
+      },
+      {
+        "machine": "machine-3-7",
+        "tier1": 0.0351049332243118,
+        "kmeans": 0.7133182844243792,
+        "pca": 0.8140161725067385,
+        "ae_v2": 0.5263157894736842,
+        "is_anomaly": 0.5263157894736842
+      },
+      {
+        "machine": "machine-3-8",
+        "tier1": 0.09470194100987774,
+        "kmeans": 0.4397590361445783,
+        "pca": 0.42494714587737836,
+        "ae_v2": 0.33060853769300635,
+        "is_anomaly": 0.33060853769300635
+      },
+      {
+        "machine": "machine-3-9",
+        "tier1": 0.022947005255345612,
+        "kmeans": 0.6802443991853361,
+        "pca": 0.5237683664649956,
+        "ae_v2": 0.6753246753246753,
+        "is_anomaly": 0.6753246753246753
+      }
+    ],
+    "5": [
+      {
+        "machine": "machine-1-1",
+        "tier1": 0.20777735417460924,
+        "kmeans": 0.7883211678832116,
+        "pca": 0.8971631205673758,
+        "ae_v2": 0.6611111111111111,
+        "is_anomaly": 0.6611111111111111
+      },
+      {
+        "machine": "machine-1-2",
+        "tier1": 0.07222914072229142,
+        "kmeans": 0.7272727272727272,
+        "pca": 0.467005076142132,
+        "ae_v2": 0.48648648648648646,
+        "is_anomaly": 0.48648648648648646
+      },
+      {
+        "machine": "machine-1-3",
+        "tier1": 0.07080366225839267,
+        "kmeans": 0.33962264150943394,
+        "pca": 0.23622047244094488,
+        "ae_v2": 0.2736842105263158,
+        "is_anomaly": 0.2736842105263158
+      },
+      {
+        "machine": "machine-1-4",
+        "tier1": 0.06251276813074567,
+        "kmeans": 0.4433497536945813,
+        "pca": 0.2777777777777778,
+        "ae_v2": 0.3835616438356164,
+        "is_anomaly": 0.3835616438356164
+      },
+      {
+        "machine": "machine-1-5",
+        "tier1": 0.015590894917368259,
+        "kmeans": 0.3392857142857143,
+        "pca": 0.24844720496894412,
+        "ae_v2": 0.49557522123893805,
+        "is_anomaly": 0.49557522123893805
+      },
+      {
+        "machine": "machine-1-6",
+        "tier1": 0.2886876109266427,
+        "kmeans": 0.6442166910688141,
+        "pca": 0.7539347408829175,
+        "ae_v2": 0.5428109854604201,
+        "is_anomaly": 0.5428109854604201
+      },
+      {
+        "machine": "machine-1-7",
+        "tier1": 0.26876790830945557,
+        "kmeans": 0.7407407407407408,
+        "pca": 0.64797507788162,
+        "ae_v2": 0.6881720430107527,
+        "is_anomaly": 0.6881720430107527
+      },
+      {
+        "machine": "machine-1-8",
+        "tier1": 0.06818181818181818,
+        "kmeans": 0.5145228215767635,
+        "pca": 0.365546218487395,
+        "ae_v2": 0.3972602739726027,
+        "is_anomaly": 0.3972602739726027
+      },
+      {
+        "machine": "machine-2-1",
+        "tier1": 0.11403746945424925,
+        "kmeans": 0.7301173402868318,
+        "pca": 0.7262079062957542,
+        "ae_v2": 0.6737967914438503,
+        "is_anomaly": 0.6737967914438503
+      },
+      {
+        "machine": "machine-2-2",
+        "tier1": 0.2835867204467887,
+        "kmeans": 0.5507246376811594,
+        "pca": 0.3711340206185567,
+        "ae_v2": 0.39086294416243655,
+        "is_anomaly": 0.39086294416243655
+      },
+      {
+        "machine": "machine-2-3",
+        "tier1": 0.030056664203005665,
+        "kmeans": 0.8518518518518519,
+        "pca": 0.8402154398563734,
+        "ae_v2": 0.7741935483870969,
+        "is_anomaly": 0.7741935483870969
+      },
+      {
+        "machine": "machine-2-4",
+        "tier1": 0.20410628019323668,
+        "kmeans": 0.18076923076923077,
+        "pca": 0.09505334626576141,
+        "ae_v2": 0.5943396226415094,
+        "is_anomaly": 0.5943396226415094
+      },
+      {
+        "machine": "machine-2-5",
+        "tier1": 0.21621621621621626,
+        "kmeans": 0.8847852268165395,
+        "pca": 0.9195402298850575,
+        "ae_v2": 0.8780487804878048,
+        "is_anomaly": 0.8780487804878048
+      },
+      {
+        "machine": "machine-2-6",
+        "tier1": 0.037081821846029824,
+        "kmeans": 0.523038605230386,
+        "pca": 0.5617021276595745,
+        "ae_v2": 0.588235294117647,
+        "is_anomaly": 0.588235294117647
+      },
+      {
+        "machine": "machine-2-7",
+        "tier1": 0.07448059584476677,
+        "kmeans": 0.395778364116095,
+        "pca": 0.23549488054607506,
+        "ae_v2": 0.5,
+        "is_anomaly": 0.5
+      },
+      {
+        "machine": "machine-2-8",
+        "tier1": 0.015684410646387835,
+        "kmeans": 0.5818181818181819,
+        "pca": 0.7032967032967034,
+        "ae_v2": 0.4782608695652174,
+        "is_anomaly": 0.4782608695652174
+      },
+      {
+        "machine": "machine-2-9",
+        "tier1": 0.11991938192811555,
+        "kmeans": 0.7857142857142858,
+        "pca": 0.7821656050955414,
+        "ae_v2": 0.5614973262032086,
+        "is_anomaly": 0.5614973262032086
+      },
+      {
+        "machine": "machine-3-1",
+        "tier1": 0.025248344370860928,
+        "kmeans": 0.8392857142857142,
+        "pca": 0.7250755287009063,
+        "ae_v2": 0.7636363636363637,
+        "is_anomaly": 0.7636363636363637
+      },
+      {
+        "machine": "machine-3-10",
+        "tier1": 0.09362460989745876,
+        "kmeans": 0.3356643356643356,
+        "pca": 0.2616822429906543,
+        "ae_v2": 0.29268292682926833,
+        "is_anomaly": 0.29268292682926833
+      },
+      {
+        "machine": "machine-3-11",
+        "tier1": 0.027263875365141188,
+        "kmeans": 0.1851851851851852,
+        "pca": 0.23076923076923078,
+        "ae_v2": 0.5084745762711864,
+        "is_anomaly": 0.5084745762711864
+      },
+      {
+        "machine": "machine-3-2",
+        "tier1": 0.09215291750503017,
+        "kmeans": 0.625,
+        "pca": 0.33333333333333337,
+        "ae_v2": 0.5,
+        "is_anomaly": 0.5
+      },
+      {
+        "machine": "machine-3-3",
+        "tier1": 0.07539811504712382,
+        "kmeans": 0.7057182705718271,
+        "pca": 0.30352303523035234,
+        "ae_v2": 0.30939226519337015,
+        "is_anomaly": 0.30939226519337015
+      },
+      {
+        "machine": "machine-3-4",
+        "tier1": 0.08639587362991619,
+        "kmeans": 0.6982248520710059,
+        "pca": 0.7518796992481204,
+        "ae_v2": 0.3037974683544304,
+        "is_anomaly": 0.3037974683544304
+      },
+      {
+        "machine": "machine-3-5",
+        "tier1": 0.0411417103356004,
+        "kmeans": 0.30806845965770163,
+        "pca": 0.2834355828220859,
+        "ae_v2": 0.34782608695652173,
+        "is_anomaly": 0.34782608695652173
+      },
+      {
+        "machine": "machine-3-6",
+        "tier1": 0.09713282621416032,
+        "kmeans": 0.6984924623115578,
+        "pca": 0.7000000000000001,
+        "ae_v2": 0.7276302851524089,
+        "is_anomaly": 0.7276302851524089
+      },
+      {
+        "machine": "machine-3-7",
+        "tier1": 0.03540240736370074,
+        "kmeans": 0.7037037037037037,
+        "pca": 0.7487684729064039,
+        "ae_v2": 0.4388185654008439,
+        "is_anomaly": 0.4388185654008439
+      },
+      {
+        "machine": "machine-3-8",
+        "tier1": 0.09595872742906278,
+        "kmeans": 0.47293447293447294,
+        "pca": 0.46582278481012657,
+        "ae_v2": 0.4028436018957346,
+        "is_anomaly": 0.4028436018957346
+      },
+      {
+        "machine": "machine-3-9",
+        "tier1": 0.0243048403707518,
+        "kmeans": 0.6956521739130436,
+        "pca": 0.6050420168067226,
+        "ae_v2": 0.6956521739130436,
+        "is_anomaly": 0.6956521739130436
+      }
+    ],
+    "15": [
+      {
+        "machine": "machine-1-1",
+        "tier1": 0.21469575200918484,
+        "kmeans": 0.6778169014084507,
+        "pca": 0.7272727272727273,
+        "ae_v2": 0.6382978723404256,
+        "is_anomaly": 0.6382978723404256
+      },
+      {
+        "machine": "machine-1-2",
+        "tier1": 0.08286252354048965,
+        "kmeans": 0.5,
+        "pca": 0.5935162094763092,
+        "ae_v2": 0.5892857142857143,
+        "is_anomaly": 0.5892857142857143
+      },
+      {
+        "machine": "machine-1-3",
+        "tier1": 0.0801457194899818,
+        "kmeans": 0.23529411764705882,
+        "pca": 0.2181818181818182,
+        "ae_v2": 0.2702702702702703,
+        "is_anomaly": 0.2702702702702703
+      },
+      {
+        "machine": "machine-1-4",
+        "tier1": 0.07195121951219512,
+        "kmeans": 0.3076923076923077,
+        "pca": 0.3,
+        "ae_v2": 0.2702702702702703,
+        "is_anomaly": 0.2702702702702703
+      },
+      {
+        "machine": "machine-1-5",
+        "tier1": 0.027484143763213533,
+        "kmeans": 0.34090909090909094,
+        "pca": 0.3468208092485549,
+        "ae_v2": 0.5517241379310344,
+        "is_anomaly": 0.5517241379310344
+      },
+      {
+        "machine": "machine-1-6",
+        "tier1": 0.3112459169388707,
+        "kmeans": 0.5245231607629428,
+        "pca": 0.6085302906818799,
+        "ae_v2": 0.3348281016442451,
+        "is_anomaly": 0.3348281016442451
+      },
+      {
+        "machine": "machine-1-7",
+        "tier1": 0.2666666666666667,
+        "kmeans": 0.6851385390428212,
+        "pca": 0.6209677419354838,
+        "ae_v2": 0.7079646017699115,
+        "is_anomaly": 0.7079646017699115
+      },
+      {
+        "machine": "machine-1-8",
+        "tier1": 0.08549222797927461,
+        "kmeans": 0.23622047244094485,
+        "pca": 0.29545454545454547,
+        "ae_v2": 0.4,
+        "is_anomaly": 0.4
+      },
+      {
+        "machine": "machine-2-1",
+        "tier1": 0.11041405269761606,
+        "kmeans": 0.761904761904762,
+        "pca": 0.6850152905198776,
+        "ae_v2": 0.6101694915254238,
+        "is_anomaly": 0.6101694915254238
+      },
+      {
+        "machine": "machine-2-2",
+        "tier1": 0.3677581863979849,
+        "kmeans": 0.6753246753246753,
+        "pca": 0.4473684210526315,
+        "ae_v2": 0.543103448275862,
+        "is_anomaly": 0.543103448275862
+      },
+      {
+        "machine": "machine-2-3",
+        "tier1": 0.041822255414488425,
+        "kmeans": 0.7909604519774012,
+        "pca": 0.7912087912087913,
+        "ae_v2": 0.7547169811320756,
+        "is_anomaly": 0.7547169811320756
+      },
+      {
+        "machine": "machine-2-4",
+        "tier1": 0.17623497997329773,
+        "kmeans": 0.09495548961424331,
+        "pca": 0.09497206703910614,
+        "ae_v2": 0.0923076923076923,
+        "is_anomaly": 0.0923076923076923
+      },
+      {
+        "machine": "machine-2-5",
+        "tier1": 0.1566156615661566,
+        "kmeans": 0.7751937984496123,
+        "pca": 0.7410926365795725,
+        "ae_v2": 0.8474148802017655,
+        "is_anomaly": 0.8474148802017655
+      },
+      {
+        "machine": "machine-2-6",
+        "tier1": 0.04364089775561097,
+        "kmeans": 0.4425531914893617,
+        "pca": 0.5258964143426295,
+        "ae_v2": 0.6153846153846153,
+        "is_anomaly": 0.6153846153846153
+      },
+      {
+        "machine": "machine-2-7",
+        "tier1": 0.0967741935483871,
+        "kmeans": 0.17204301075268819,
+        "pca": 0.24324324324324323,
+        "ae_v2": 0.24793388429752064,
+        "is_anomaly": 0.24793388429752064
+      },
+      {
+        "machine": "machine-2-8",
+        "tier1": 0.014502307185234015,
+        "kmeans": 0.5789473684210525,
+        "pca": 0.7333333333333334,
+        "ae_v2": 0.45454545454545453,
+        "is_anomaly": 0.45454545454545453
+      },
+      {
+        "machine": "machine-2-9",
+        "tier1": 0.12581128307538691,
+        "kmeans": 0.7517241379310344,
+        "pca": 0.7200000000000001,
+        "ae_v2": 0.503225806451613,
+        "is_anomaly": 0.503225806451613
+      },
+      {
+        "machine": "machine-3-1",
+        "tier1": 0.02661596958174905,
+        "kmeans": 0.7132867132867132,
+        "pca": 0.6986301369863015,
+        "ae_v2": 0.8,
+        "is_anomaly": 0.8
+      },
+      {
+        "machine": "machine-3-10",
+        "tier1": 0.10452517527087316,
+        "kmeans": 0.125,
+        "pca": 0.0,
+        "ae_v2": 0.30769230769230776,
+        "is_anomaly": 0.30769230769230776
+      },
+      {
+        "machine": "machine-3-11",
+        "tier1": 0.017411491584445733,
+        "kmeans": 0.14012738853503182,
+        "pca": 0.14492753623188406,
+        "ae_v2": 0.5925925925925926,
+        "is_anomaly": 0.5925925925925926
+      },
+      {
+        "machine": "machine-3-2",
+        "tier1": 0.09747292418772563,
+        "kmeans": 0.18181818181818182,
+        "pca": 0.18181818181818182,
+        "ae_v2": 0.18181818181818182,
+        "is_anomaly": 0.18181818181818182
+      },
+      {
+        "machine": "machine-3-3",
+        "tier1": 0.13765677577240745,
+        "kmeans": 0.3243243243243243,
+        "pca": 0.27272727272727276,
+        "ae_v2": 0.3181818181818182,
+        "is_anomaly": 0.3181818181818182
+      },
+      {
+        "machine": "machine-3-4",
+        "tier1": 0.09224855861627163,
+        "kmeans": 0.6182432432432431,
+        "pca": 0.6428571428571429,
+        "ae_v2": 0.4,
+        "is_anomaly": 0.4
+      },
+      {
+        "machine": "machine-3-5",
+        "tier1": 0.05003474635163308,
+        "kmeans": 0.30234741784037555,
+        "pca": 0.28129829984544047,
+        "ae_v2": 0.41666666666666663,
+        "is_anomaly": 0.41666666666666663
+      },
+      {
+        "machine": "machine-3-6",
+        "tier1": 0.09949692565679151,
+        "kmeans": 0.6896551724137931,
+        "pca": 0.6601580660158066,
+        "ae_v2": 0.6766917293233083,
+        "is_anomaly": 0.6766917293233083
+      },
+      {
+        "machine": "machine-3-7",
+        "tier1": 0.03953646898432174,
+        "kmeans": 0.6037735849056604,
+        "pca": 0.5693430656934306,
+        "ae_v2": 0.44094488188976383,
+        "is_anomaly": 0.44094488188976383
+      },
+      {
+        "machine": "machine-3-8",
+        "tier1": 0.09857723577235773,
+        "kmeans": 0.41830065359477125,
+        "pca": 0.4551724137931034,
+        "ae_v2": 0.3870967741935484,
+        "is_anomaly": 0.3870967741935484
+      },
+      {
+        "machine": "machine-3-9",
+        "tier1": 0.026542800265428004,
+        "kmeans": 0.5753424657534245,
+        "pca": 0.5492957746478874,
+        "ae_v2": 0.5454545454545454,
+        "is_anomaly": 0.5454545454545454
+      }
+    ]
+  }
+}
