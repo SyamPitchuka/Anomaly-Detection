@@ -17,6 +17,14 @@ at the number of brokers, see `README.md`). There is no separate admin VM, becau
 > **Untested.** The scripts have never run on real VMs, and neither has this runbook. Billing runs for as long as VMs are allocated;
 > deallocate them when you stop working (section 9).
 
+> **`spark-master` already exists.** It was created in the portal (admin user `spark`, uid 1000, ssh key `spark-master_key`) and is already set up:
+> repo, SMD data and the AE / KMeans / PCA models in `~/Anomaly-Detection`, Python 3.11 (deadsnakes) and Docker. This runbook therefore
+> creates only **`spark-w1` and `spark-w2`**, with the **same admin user `spark` and the same key**, so that the `spark` user has uid / gid 1000 on all
+> three VMs (NFS ownership must match). Sections 3, 5 and 9 are written for that.
+>
+> The old standalone `kafka` container on `spark-master` (from the latency run) holds port 9092; `20_kafka_broker.sh` removes it before
+> it starts `kafka-1`.
+
 ## Why `spark-master` is also the admin machine
 
 The broker advertises `spark-master:9092`. Azure's built-in DNS resolves VM names only inside the same virtual network, so your laptop
@@ -70,33 +78,40 @@ The resource group and the virtual network already exist; they are not created h
 RG=spark-rg
 VNET=spark-vnet
 LOC=$(az group show -n "$RG" --query location -o tsv)   # region of the existing group (indiasouthcentral)
-ADMIN_USER=azureuser
+ADMIN_USER=spark   # same admin user as the existing spark-master (uid 1000)
 IMAGE=Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest   # Ubuntu 22.04
-KEY="$HOME/.ssh/azure_cluster"
+KEY="$HOME/.ssh/spark-master_key" # private key of the existing spark-master (adjust the path / extension, e.g. .pem)
 
 az group show -n "$RG" --query "{name:name,location:location}" -o table
 az network vnet show -g "$RG" -n "$VNET" --query "{space:addressSpace.addressPrefixes,location:location}" -o json
 az network vnet subnet list -g "$RG" --vnet-name "$VNET" --query "[].{name:name,prefix:addressPrefix,nat:natGateway.id,nsg:networkSecurityGroup.id}" -o table
 ```
 
-Pick the subnet the VMs go into and note its CIDR (it becomes `NFS_NETWORK` in section 6):
+Check that `spark-master` exists and use **its subnet** for the workers (it becomes `NFS_NETWORK` in section 6):
 
 ```bash
-SUBNET=<subnet name from the table above>
+az vm show -d -g "$RG" -n spark-master --query "{state:powerState,size:hardwareProfile.vmSize,ip:publicIps,user:osProfile.adminUsername}" -o table
+SUBNET=$(az vm show -g "$RG" -n spark-master --query "networkProfile.networkInterfaces[0].id" -o tsv \
+  | xargs az network nic show --ids | python3 -c 'import json,sys; print(json.load(sys.stdin)["ipConfigurations"][0]["subnet"]["id"].split("/")[-1])')
 SUBNET_CIDR=$(az network vnet subnet show -g "$RG" --vnet-name "$VNET" -n "$SUBNET" --query addressPrefix -o tsv)
 echo "$SUBNET $SUBNET_CIDR"
 
-ssh-keygen -t ed25519 -f "$KEY" -N ""              # one key for all VMs; the public half goes into every VM
+# the workers get the public half of the SAME key as spark-master (the portal gave you only the private key)
+chmod 600 "$KEY"
+ssh-keygen -y -f "$KEY" > "$KEY.pub"
 ```
+
+The `user` column must show `spark`. If `python3` is not available in your shell, read the subnet name from the table above and set `SUBNET` by hand.
 
 Ubuntu 22.04 is used because the scripts install Python 3.11 from the deadsnakes PPA, which supports it.
 
 If the subnet already has free addresses but a **custom DNS** is configured on `spark-vnet`, check in section 4 that `getent hosts spark-w1` works;
 VM names must resolve between the three VMs.
 
-## 2. Network security group for the VMs
+## 2. Network security group for the workers
 
 Only ssh from your address is allowed in; traffic between the VMs inside the VNet is allowed by Azure's default `AllowVnetInBound` rule.
+`spark-master` keeps the NSG it already has; this one is attached to the new worker NICs only.
 
 ```bash
 MYIP=$(curl -s https://api.ipify.org)              # SSH will be allowed from this address only
@@ -110,22 +125,27 @@ az network nsg rule create -g "$RG" --nsg-name spark-nsg -n ssh-from-me --priori
 If your address changes later, update the rule: `az network nsg rule update -g "$RG" --nsg-name spark-nsg -n ssh-from-me --source-address-prefixes "<new ip>/32"`.
 You do not need to open Kafka, Spark or NFS ports.
 
-## 3. Create the VMs
+## 3. Create the worker VMs
 
-The VM names **must** match the hostnames in `cluster.env.example`, because the scripts compare them with `hostname -s`.
+**`spark-master` already exists; do not create it again.** Create only `spark-w1` and `spark-w2`. The VM names **must** match the hostnames in
+`cluster.env.example`, because the scripts compare them with `hostname -s`.
+
+`--admin-username spark` makes the Azure admin account `spark` (uid / gid 1000, passwordless sudo), the same as on `spark-master`, so
+`00_prereqs.sh` finds an existing `spark` user and the NFS ownership is identical on all VMs.
 
 ```bash
+az vm show -g "$RG" -n spark-master --query name -o tsv || { echo "spark-master is missing"; false; }   # must already exist
+
 common=(--resource-group "$RG" --location "$LOC" --image "$IMAGE" --admin-username "$ADMIN_USER"
         --authentication-type ssh --ssh-key-values "$KEY.pub"
         --vnet-name "$VNET" --subnet "$SUBNET" --nsg spark-nsg --public-ip-sku Standard
         --os-disk-size-gb 64 --storage-sku Premium_LRS
         --os-disk-delete-option Delete --nic-delete-option Delete --no-wait)
 
-az vm create "${common[@]}" --name spark-master --size Standard_D2as_v4 --public-ip-address spark-master-pip
-az vm create "${common[@]}" --name spark-w1     --size Standard_D2s_v4  --public-ip-address spark-w1-pip
-az vm create "${common[@]}" --name spark-w2     --size Standard_D2s_v4  --public-ip-address spark-w2-pip
+az vm create "${common[@]}" --name spark-w1 --size Standard_D2s_v4 --public-ip-address spark-w1-pip
+az vm create "${common[@]}" --name spark-w2 --size Standard_D2s_v4 --public-ip-address spark-w2-pip
 
-for n in spark-master spark-w1 spark-w2; do
+for n in spark-w1 spark-w2; do
   az vm wait -g "$RG" -n "$n" --created
 done
 az vm list -g "$RG" -d -o table                     # the three VMs: "VM running" (spark-rg may hold other resources too)
@@ -142,6 +162,7 @@ The broker, the NFS server and the drivers share this one VM and disk, so Kafka 
 MASTER_IP=$(az vm show -d -g "$RG" -n spark-master --query publicIps -o tsv)
 
 # spark-master needs the private key to reach itself and the two workers over ssh
+# (skip these two lines if ~/.ssh/id_ed25519 / id_rsa is already the spark-master_key on spark-master)
 scp -i "$KEY" "$KEY" "$ADMIN_USER@$MASTER_IP:.ssh/id_ed25519"
 ssh -i "$KEY" "$ADMIN_USER@$MASTER_IP" "chmod 600 ~/.ssh/id_ed25519"
 
@@ -163,7 +184,21 @@ done
 Every host must resolve and print its own short name, `sudo-ok` and about 7.6-7.8 GB of total memory. If a name does not resolve, the VM name
 or the VNet DNS is wrong. Do not continue until this works.
 
-## 5. Copy the repo to `spark-master`
+## 5. Copy the repo to `spark-master`: already done, skip
+
+`spark-master` already has the repo, the SMD data and the AE / KMeans / PCA models in `~/Anomaly-Detection`, plus Python 3.11.18 (deadsnakes)
+and Docker. Nothing to copy or install. Optional quick check on `spark-master`:
+
+```bash
+cd ~/Anomaly-Detection
+ls models data | head; python3.11 --version; docker --version
+sed -i 's/\r$//' infra/cluster/*.sh infra/cluster/cluster.env.example           # harmless if there is no CRLF
+for f in infra/cluster/*.sh; do bash -n "$f" && echo "syntax ok: $f"; done
+```
+
+Continue with section 6. The rest of this section is kept only for building a new master from scratch.
+
+<details><summary>Copy the repo to a new master (not needed here)</summary>
 
 `deploy.sh repo` copies the repo from the machine that runs it (`spark-master`, home directory) to the NFS share, so `spark-master` needs a full
 working copy. Pick one.
@@ -196,6 +231,8 @@ for f in infra/cluster/*.sh; do bash -n "$f" && echo "syntax ok: $f"; done
 This `~/Anomaly-Detection/.venv` is only for the client tools (Ubuntu's Python 3.10 is fine). The Spark VMs get Python 3.11 at
 `/opt/anomaly-venv` from the deploy scripts.
 
+</details>
+
 ## 6. Configure the cluster
 
 ```bash
@@ -204,12 +241,15 @@ cp infra/cluster/cluster.env.example infra/cluster/cluster.env
 # NFS_NETWORK = the CIDR of the subnet this VM is in, read from its own route table (the same subnet as spark-w1 and spark-w2)
 SUBNET_CIDR=$(ip -4 route show dev eth0 proto kernel scope link | awk 'NR==1 {print $1}'); echo "$SUBNET_CIDR"
 sed -i "s|^NFS_NETWORK=.*|NFS_NETWORK=${SUBNET_CIDR}|" infra/cluster/cluster.env
-grep -E '^(VM_PROFILE|KAFKA_HOST|KAFKA_BROKER_COUNT|SPARK_MASTER_HOST|SPARK_WORKER_HOSTS|NFS_SERVER_HOST|SSH_USER|NFS_NETWORK)=' infra/cluster/cluster.env
+grep -E '^(VM_PROFILE|KAFKA_HOST|KAFKA_BROKER_COUNT|SPARK_MASTER_HOST|SPARK_WORKER_HOSTS|NFS_SERVER_HOST|SSH_USER|SPARK_UID|SPARK_GID|NFS_NETWORK)=' infra/cluster/cluster.env
+id spark                                                                   # on every VM: uid=1000(spark) gid=1000(spark), matching SPARK_UID / SPARK_GID
 bash infra/cluster/gen_cluster_id.sh                                       # writes KAFKA_CLUSTER_ID once
 ```
 
 The example already matches this runbook: `VM_PROFILE=vm_8gb_2cpu`, `KAFKA_BROKER_COUNT=1`, `SPARK_WORKER_HOSTS=(spark-w1 spark-w2)`,
-`KAFKA_HOST=spark-master`, `SSH_USER=azureuser` (Azure's default admin account, with passwordless sudo). Only `NFS_NETWORK` needs your subnet.
+`KAFKA_HOST=spark-master`, `SSH_USER=spark` (the Azure admin account of all three VMs, with passwordless sudo), `SPARK_UID=1000`,
+`SPARK_GID=1000`. Only `NFS_NETWORK` needs your subnet. `00_prereqs.sh` stops with an error if the `spark` user on a VM does not have
+`SPARK_UID` / `SPARK_GID`.
 
 ## 7. Deploy
 
@@ -218,6 +258,7 @@ Wait about 5 minutes after the VMs were created. On a fresh Azure Ubuntu image, 
 
 ```bash
 cd ~/Anomaly-Detection
+sudo docker ps -a --filter name=kafka       # the old standalone 'kafka' container (port 9092) is removed by 20_kafka_broker.sh; or: sudo docker rm -f kafka
 bash infra/cluster/deploy.sh ssh            # ssh + passwordless sudo on all three VMs
 bash infra/cluster/deploy.sh env            # prints the memory budget per VM; stops if a VM would not fit
 bash infra/cluster/deploy.sh all            # about 15-30 minutes; torch and pyspark are installed on three VMs
@@ -293,6 +334,9 @@ ssh -i "$KEY" -L 8080:spark-master:8080 -L 4040:spark-master:4040 "$ADMIN_USER@$
 `spark-rg` and `spark-vnet` are shared and already existed, so **do not delete the resource group**. Deallocate to stop paying for compute,
 or delete only the resources created here.
 
+> **WARNING: `spark-master` was NOT created by this runbook** (portal-created, holds the repo, data, models and the Kafka data). The delete
+> commands below remove **the workers only**. Never delete `spark-master`, its public IP or the key `spark-master_key` as part of this cleanup.
+
 ```bash
 # stop paying for compute (disks and the public IPs still cost a little)
 az vm deallocate -g "$RG" --no-wait --ids $(az vm show -g "$RG" -n spark-master --query id -o tsv) \
@@ -305,14 +349,15 @@ az vm start -g "$RG" --no-wait -n spark-w2
 # then on spark-master:  bash infra/cluster/health_check.sh
 # the Kafka container uses --restart unless-stopped, so Docker brings it back with the VM
 
-# remove only what this runbook created (OS disks and NICs go with the VMs because of the *-delete-option flags)
-for n in spark-master spark-w1 spark-w2; do az vm delete -g "$RG" -n "$n" --yes; done
-for n in spark-master spark-w1 spark-w2; do az network public-ip delete -g "$RG" -n "$n-pip"; done
-az network nsg delete -g "$RG" -n spark-nsg          # only if nothing else uses it
+# remove only what this runbook created: the two workers (OS disks and NICs go with the VMs because of the *-delete-option flags)
+for n in spark-w1 spark-w2; do az vm delete -g "$RG" -n "$n" --yes; done
+for n in spark-w1 spark-w2; do az network public-ip delete -g "$RG" -n "$n-pip"; done
+az network nsg delete -g "$RG" -n spark-nsg          # only if you created it in section 2 and nothing else (e.g. spark-master) uses it
 ```
 
 The public IPs are Standard (static), so their addresses stay the same after a deallocate; the ssh rule only needs updating if your own address changes.
-Delete the local `~/.ssh/azure_cluster*` pair, and the copy on `spark-master` goes with the VM, when you are finished.
+Keep the key `spark-master_key`: it is also the login key of `spark-master`. The workers are gone after the delete; `spark-master` keeps
+running (and billing) until you deallocate it as above.
 
 ## Azure-specific troubleshooting
 

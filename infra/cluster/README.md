@@ -282,11 +282,11 @@ the connector resolves.
 | `KAFKA_BROKER_COUNT` | number of brokers: 1 (default, RF 1) or 3 (RF 3, min ISR 2) |
 | `SPARK_MASTER_HOST`, `SPARK_WORKER_HOSTS`, `NFS_SERVER_HOST` | topology (default: `spark-master`; `spark-w1 spark-w2`; `spark-master`) |
 | `VM_PROFILE` | which file in `profiles/` supplies the VM-size settings (default `vm_8gb_2cpu`) |
-| `SSH_USER`, `NFS_NETWORK` | admin ssh user (`azureuser` on Azure); CIDR allowed to mount the share (the VMs' subnet) |
+| `SSH_USER`, `NFS_NETWORK` | admin ssh user (`spark` on Azure, created with `--admin-username spark`); CIDR allowed to mount the share (the VMs' subnet) |
 | `KAFKA_CLUSTER_ID` | written by `gen_cluster_id.sh`, identical on all brokers; never change it after first start |
 | `KAFKA_PORT_BASE` | 9092: broker n uses client port `BASE+100*(n-1)` and controller port `BASE+1+100*(n-1)` |
 | `KAFKA_DATA_DIR`, `KAFKA_LOG_RETENTION_HOURS` | host data path (broker n in `broker-n/`), retention (24 h as on laptops) |
-| `SHARED_DIR`, `REPO_DIR`, `SPARK_UID`, `SPARK_GID` | share path, repo location on it, fixed `spark` uid / gid on all VMs |
+| `SHARED_DIR`, `REPO_DIR`, `SPARK_UID`, `SPARK_GID` | share path, repo location on it, fixed `spark` uid / gid on all VMs (1000 when `spark` is the Azure admin user; `00_prereqs.sh` fails if an existing `spark` user differs) |
 | `PYTHON_BIN`, `VENV_DIR`, `INSTALL_ML` | Python 3.11 binary, local venv path (same on every Spark VM), install torch or not |
 
 ### VM profiles (`profiles/<VM_PROFILE>.env`)

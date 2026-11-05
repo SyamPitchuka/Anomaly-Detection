@@ -22,5 +22,11 @@ fi
 if ! id spark > /dev/null 2>&1; then
     useradd --system --uid "${SPARK_UID}" --gid spark --home-dir /var/lib/spark --create-home --shell /usr/sbin/nologin spark
 fi
+# A pre-existing 'spark' account (for example the Azure admin user, uid 1000) is kept as it is, so its ids must match
+# the contract. Otherwise NFS file ownership differs between VMs and checkpoints cannot be written.
+[[ "$(id -u spark)" == "${SPARK_UID}" ]] \
+    || die "user spark has uid $(id -u spark) on $(hostname -s) but SPARK_UID=${SPARK_UID}; fix SPARK_UID in cluster.env or recreate the user"
+[[ "$(id -g spark)" == "${SPARK_GID}" ]] \
+    || die "user spark has gid $(id -g spark) on $(hostname -s) but SPARK_GID=${SPARK_GID}; fix SPARK_GID in cluster.env or recreate the user"
 resolve_check
 log "prereqs done (java ${java_major}, user spark)"

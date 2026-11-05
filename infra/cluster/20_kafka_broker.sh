@@ -44,6 +44,14 @@ if ! docker image inspect "${KAFKA_IMAGE}" > /dev/null 2>&1; then
     [[ "${pulled}" -eq 1 ]] || die "cannot pull ${KAFKA_IMAGE}"
 fi
 
+# ---- leftover single-broker container -------------------------------------------------------
+# An earlier standalone run (infra/docker-compose.yml, latency measurements) leaves a container called plain 'kafka'
+# that owns :9092. Remove it, otherwise kafka-1 cannot bind. Its data is not reused by kafka-N.
+if docker inspect kafka > /dev/null 2>&1; then
+    warn "removing the old standalone container 'kafka' (it holds :${KAFKA_PORT_BASE}); its data is not reused"
+    docker rm -f kafka > /dev/null
+fi
+
 # ---- brokers -------------------------------------------------------------------------------
 install -d -m 0755 "${KAFKA_DATA_DIR}"
 
