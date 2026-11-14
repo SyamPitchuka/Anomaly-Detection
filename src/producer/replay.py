@@ -10,6 +10,11 @@ used downstream to measure end-to-end latency.
 
 --speedup S  event time runs S times faster than wall time (default 100); 0 = as fast as possible.
 --limit N    send only the first N records in event_time order.
+--time-offset SECONDS  add SECONDS to every event_time that is sent (default 0). Looping the same data set
+             (the soak test) needs this: after the first pass the stream watermark is past the original event
+             times, so score_job would drop a second pass as late. Pacing is unaffected (it uses differences).
+--print-span print the length of the data set in whole seconds (max - min event_time, rounded up) and exit
+             without sending; a loop shifts by span + a gap so that pass N+1 starts after pass N ended.
 Prints records/s every 5 s.
 
 Memory: the files are not loaded. Each sorted file (every SMD machine file) is streamed in batches of 256
@@ -94,6 +99,20 @@ def raw_files(root: Path, source: str) -> list[Path]:
 
 def _event_us(column) -> list:
     return column.cast(pa.timestamp("us", tz="UTC"), safe=False).cast(pa.int64()).to_pylist()
+
+
+def data_span_seconds(files: list[Path]) -> int:
+    """max(event_time) - min(event_time) over all files, in whole seconds rounded up (0 for no/one record).
+    Reads only the event_time column."""
+    lo = hi = None
+    for f in files:
+        times = pq.read_table(f, columns=["event_time"]).column("event_time")
+        if len(times) == 0:
+            continue
+        us = pc.min_max(times.cast(pa.timestamp("us", tz="UTC"), safe=False).cast(pa.int64())).as_py()
+        lo = us["min"] if lo is None else min(lo, us["min"])
+        hi = us["max"] if hi is None else max(hi, us["max"])
+    return 0 if lo is None else -(-(hi - lo) // 1_000_000)
 
 
 def batch_records(batch):
@@ -214,12 +233,13 @@ def _wait_until(target, producer, reporter, monotonic, sleep) -> None:
 
 
 def replay(producer, records, source: str, speedup: float = 100.0, limit=None, *,
-           now=time.time, monotonic=time.monotonic, sleep=time.sleep, out=print) -> int:
+           time_offset_us: int = 0, now=time.time, monotonic=time.monotonic, sleep=time.sleep, out=print) -> int:
     """Send records to the source topic in event_time order; returns the number of records sent.
 
     records: an iterator of (event_us, entity_id, metric pairs, attr pairs, label) already in
     (event_time, entity_id) order, e.g. merged_records(raw_files(...)), or a pyarrow Table (sorted here).
-    Only the first `limit` records are pulled from the iterator, so nothing beyond them is read."""
+    Only the first `limit` records are pulled from the iterator, so nothing beyond them is read.
+    time_offset_us is added to the event_time of every record sent (pacing uses the unshifted times)."""
     topic = TOPICS[source]
     if isinstance(records, pa.Table):
         records = table_records(records)
@@ -243,7 +263,7 @@ def replay(producer, records, source: str, speedup: float = 100.0, limit=None, *
         if speedup > 0:
             target = start + (event_us - first_us) / 1_000_000 / speedup
             _wait_until(target, producer, reporter, monotonic, sleep)
-        value = build_value(source, entity, event_us, metrics, attrs, label, int(now() * 1000))
+        value = build_value(source, entity, event_us + time_offset_us, metrics, attrs, label, int(now() * 1000))
         _produce(producer, topic, entity.encode("utf-8"), value, on_delivery)
         sent += 1
         reporter.count = sent
@@ -269,6 +289,10 @@ def main(argv=None, producer=None) -> int:
     ap.add_argument("--source", choices=S.SOURCES, default="smd")
     ap.add_argument("--speedup", type=float, default=100.0, help="event-time speedup; 0 = as fast as possible")
     ap.add_argument("--limit", type=int, default=None, help="send only the first N records")
+    ap.add_argument("--time-offset", type=float, default=0.0, metavar="SECONDS",
+                    help="add SECONDS to every event_time sent (shifts a repeated pass past the watermark)")
+    ap.add_argument("--print-span", action="store_true",
+                    help="print the data set's event-time span in whole seconds and exit")
     ap.add_argument("--root", type=Path, default=ROOT, help="repo root that contains data/raw")
     ap.add_argument("--bootstrap", default=S.KAFKA_BOOTSTRAP)
     args = ap.parse_args(argv)
@@ -280,14 +304,18 @@ def main(argv=None, producer=None) -> int:
         print(f"FAIL {e}", file=sys.stderr)
         code = 1
     else:
-        if producer is None:
-            producer = make_producer(args.bootstrap)
-        try:
-            replay(producer, merged_records(files), args.source, args.speedup, args.limit)
-        except KeyboardInterrupt:
-            producer.flush(5)
-            print("interrupted", flush=True)
-            code = 130
+        if args.print_span:
+            print(data_span_seconds(files))
+        else:
+            if producer is None:
+                producer = make_producer(args.bootstrap)
+            try:
+                replay(producer, merged_records(files), args.source, args.speedup, args.limit,
+                       time_offset_us=int(round(args.time_offset * 1_000_000)))
+            except KeyboardInterrupt:
+                producer.flush(5)
+                print("interrupted", flush=True)
+                code = 130
     return code
 
 
