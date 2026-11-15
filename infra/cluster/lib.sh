@@ -87,7 +87,17 @@ mem_to_mb() { # 3g -> 3072, 512m -> 512
 # VM_MEMORY, OS_RESERVE_MB, DRIVER_OVERHEAD_MB and all Spark / Kafka sizes come from the VM profile
 # (profiles/<VM_PROFILE>.env), optionally overridden in cluster.env.
 
+# Single-VM layout: the master VM is also in SPARK_WORKER_HOSTS (SPARK_WORKER_HOSTS=(spark-master)). Returns 0 if so.
+master_is_worker() {
+    local w
+    for w in "${SPARK_WORKER_HOSTS[@]}"; do
+        [[ "${w%%.*}" == "${SPARK_MASTER_HOST%%.*}" ]] && return 0
+    done
+    return 1
+}
+
 # Sets VM_MB, WORKER_NEED_MB, KAFKA_NEED_MB, MASTER_NEED_MB (all in MB).
+# On a single VM (master_is_worker) MASTER_NEED_MB is the whole VM: master side + worker side, one OS reserve.
 compute_budget() {
     local exec_mb overhead_mb daemon_mb driver_mb kafka_mb
     exec_mb="$(mem_to_mb "${SPARK_EXECUTOR_MEMORY}")"
@@ -102,6 +112,9 @@ compute_budget() {
     if [[ "${KAFKA_HOST%%.*}" == "${SPARK_MASTER_HOST%%.*}" ]]; then
         MASTER_NEED_MB=$((MASTER_NEED_MB + KAFKA_NEED_MB))
     fi
+    if master_is_worker; then
+        MASTER_NEED_MB=$((MASTER_NEED_MB + WORKER_NEED_MB - OS_RESERVE_MB))
+    fi
 }
 
 show_budget() {
@@ -109,6 +122,9 @@ show_budget() {
     log "memory budget per VM (profile ${VM_PROFILE}, limit ${VM_MB} MB):"
     log "  worker : ${EXECUTORS_PER_WORKER} executors x ($(mem_to_mb "${SPARK_EXECUTOR_MEMORY}") + $(mem_to_mb "${SPARK_EXECUTOR_MEMORY_OVERHEAD}")) + daemon $(mem_to_mb "${SPARK_DAEMON_MEMORY}") + OS ${OS_RESERVE_MB} = ${WORKER_NEED_MB} MB"
     log "  master : ${KAFKA_BROKER_COUNT} broker(s) x $(mem_to_mb "${KAFKA_CONTAINER_MEMORY}") (if on the master) + daemon + driver + overhead + OS = ${MASTER_NEED_MB} MB"
+    if master_is_worker; then
+        log "  (single VM: the master total includes the worker side above, with one OS reserve)"
+    fi
 }
 
 validate_layout() {
@@ -126,8 +142,35 @@ validate_layout() {
     [[ "${MASTER_NEED_MB}" -le "${VM_MB}" ]] || die "master VM needs ${MASTER_NEED_MB} MB but VM_MEMORY is ${VM_MB} MB (lower KAFKA_CONTAINER_MEMORY / SPARK_DRIVER_MEMORY)"
     local w
     for w in "${SPARK_WORKER_HOSTS[@]}"; do
-        [[ "${w%%.*}" != "${KAFKA_HOST%%.*}" ]] || die "KAFKA_HOST must not be a Spark worker (its memory budget has no room for the brokers)"
+        # allowed only in the single-VM layout, where the combined budget above already counts the brokers
+        if [[ "${w%%.*}" == "${KAFKA_HOST%%.*}" && "${w%%.*}" != "${SPARK_MASTER_HOST%%.*}" ]]; then
+            die "KAFKA_HOST must not be a Spark worker (its memory budget has no room for the brokers)"
+        fi
     done
+}
+
+# ---- outbound proxy (workers without a public IP) -------------------------------------------
+# OUTBOUND_PROXY_HOST (cluster.env) runs tinyproxy (05_proxy.sh) on OUTBOUND_PROXY_PORT, reachable from NFS_NETWORK only.
+# Every other VM sends apt, curl and pip through it. Empty = every VM has its own outbound internet.
+OUTBOUND_PROXY_HOST="${OUTBOUND_PROXY_HOST:-}"
+OUTBOUND_PROXY_PORT="${OUTBOUND_PROXY_PORT:-8888}"
+APT_PROXY_CONF="${APT_PROXY_CONF:-/etc/apt/apt.conf.d/95cluster-proxy}"
+
+is_proxy_host() { [[ "$(hostname -s)" == "${OUTBOUND_PROXY_HOST%%.*}" ]]; }
+
+# use_outbound_proxy   call at the top of a setup script that downloads anything (root). No-op without a proxy
+# and on the proxy host itself. Exports the proxy variables for curl / pip / add-apt-repository and writes the apt config.
+use_outbound_proxy() {
+    if [[ -z "${OUTBOUND_PROXY_HOST}" ]] || is_proxy_host; then
+        return 0
+    fi
+    local url="http://${OUTBOUND_PROXY_HOST}:${OUTBOUND_PROXY_PORT}" hosts
+    hosts="$(all_hosts | paste -sd, -)"
+    export http_proxy="${url}" https_proxy="${url}" HTTP_PROXY="${url}" HTTPS_PROXY="${url}"
+    export no_proxy="localhost,127.0.0.1,${hosts}" NO_PROXY="localhost,127.0.0.1,${hosts}"
+    printf 'Acquire::http::Proxy "%s/";\nAcquire::https::Proxy "%s/";\n' "${url}" "${url}" \
+        | put_file "${APT_PROXY_CONF}" 0644 || true
+    log "outbound traffic via ${url}"
 }
 
 # put_file <dest> <mode>   content on stdin. Returns 0 if the file changed, 1 if it was already identical.

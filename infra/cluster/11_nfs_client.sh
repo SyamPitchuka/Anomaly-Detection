@@ -10,6 +10,7 @@ if is_nfs_server; then
     log "this VM is the NFS server; nothing to mount"
     exit 0
 fi
+use_outbound_proxy
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends nfs-common
