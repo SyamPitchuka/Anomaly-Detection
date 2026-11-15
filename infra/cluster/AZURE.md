@@ -33,16 +33,23 @@ cannot resolve `spark-master`. `deploy.sh`, `check_kafka_cluster.py`, the topic 
 
 ```
 laptop --ssh--> spark-master (public IP, in spark-vnet)  <- run deploy.sh and the python tools here
-                    | ssh
+                    | ssh, Spark, NFS, Kafka (private IPs, inside spark-vnet)
         +-----------+-----------+
-   spark-master             spark-w1, spark-w2
+   spark-master             spark-w1, spark-w2   (NO public IP)
    (Kafka x1, Spark master,  (Spark workers)
-    NFS, drivers)
+    NFS, drivers,             apt / pip / downloads --> tinyproxy on spark-master:8888 --> internet
+    tinyproxy :8888)
 ```
 
-All three VMs get a public IP, for two reasons: it gives them outbound internet (apt, Docker Hub, PyPI, Maven, Apache archive, deadsnakes PPA)
-without changing the existing subnet, and it needs no NAT gateway. Inbound traffic is limited to ssh from your own address by a network security
-group attached to the VM NICs, so the existing subnet is not touched.
+**Only `spark-master` has a public IP.** The workers have none: nothing on them is reachable from the internet, and you reach them only by
+ssh from `spark-master`. They still need outbound HTTP(S) once, while `deploy.sh` installs Java, NFS, Spark, Python 3.11 and the pip packages.
+Since Azure retired default outbound access for new subnets (Sept 2025), a VM without a public IP in a private subnet has no internet at all,
+and a NAT gateway costs money and needs rights on the shared `spark-vnet`. So `deploy.sh` phase `proxy` runs **tinyproxy** on `spark-master`
+(port 8888, accepting only the subnet), and the setup scripts on the workers send apt, curl and pip through it (`OUTBOUND_PROXY_HOST=spark-master`,
+the default in `cluster.env.example`; see "Workers without a public IP" in `README.md`). Docker Hub and Maven are only used on `spark-master`.
+If your subnet does have default outbound access, the proxy is harmless; set `OUTBOUND_PROXY_HOST=` to skip it.
+
+Running everything from `spark-master` also means you need no admin VM: 3 x 2 vCPUs already fill the 6 vCPU Azure for Students quota.
 
 ## 0. Before you start
 
@@ -108,22 +115,14 @@ Ubuntu 22.04 is used because the scripts install Python 3.11 from the deadsnakes
 If the subnet already has free addresses but a **custom DNS** is configured on `spark-vnet`, check in section 4 that `getent hosts spark-w1` works;
 VM names must resolve between the three VMs.
 
-## 2. Network security group for the workers
+## 2. Network security: nothing to create
 
-Only ssh from your address is allowed in; traffic between the VMs inside the VNet is allowed by Azure's default `AllowVnetInBound` rule.
-`spark-master` keeps the NSG it already has; this one is attached to the new worker NICs only.
+The workers have no public IP, so no inbound rule from the internet is needed or possible. They are created **without an NIC-level NSG**
+(`--nsg ""` below), so only the subnet's NSG applies, if `spark-vnet` has one; Azure's default rules `AllowVnetInBound` / `AllowVnetOutBound`
+let the three VMs talk to each other on every port (ssh, Spark 7077 and random ports, NFS 2049, Kafka 9092, the proxy 8888).
+`spark-master` keeps the NSG it already has (ssh from your address). You do not need to open Kafka, Spark, NFS or proxy ports.
 
-```bash
-MYIP=$(curl -s https://api.ipify.org)              # SSH will be allowed from this address only
-az network nsg show -g "$RG" -n spark-nsg --query name -o tsv 2>/dev/null \
-  || az network nsg create -g "$RG" -l "$LOC" -n spark-nsg
-az network nsg rule create -g "$RG" --nsg-name spark-nsg -n ssh-from-me --priority 100 \
-  --access Allow --direction Inbound --protocol Tcp --destination-port-ranges 22 \
-  --source-address-prefixes "$MYIP/32"
-```
-
-If your address changes later, update the rule: `az network nsg rule update -g "$RG" --nsg-name spark-nsg -n ssh-from-me --source-address-prefixes "<new ip>/32"`.
-You do not need to open Kafka, Spark or NFS ports.
+If the subnet NSG has a custom rule that denies traffic inside the VNet, add an allow rule for `VirtualNetwork` -> `VirtualNetwork` above it.
 
 ## 3. Create the worker VMs
 
@@ -138,18 +137,22 @@ az vm show -g "$RG" -n spark-master --query name -o tsv || { echo "spark-master 
 
 common=(--resource-group "$RG" --location "$LOC" --image "$IMAGE" --admin-username "$ADMIN_USER"
         --authentication-type ssh --ssh-key-values "$KEY.pub"
-        --vnet-name "$VNET" --subnet "$SUBNET" --nsg spark-nsg --public-ip-sku Standard
+        --vnet-name "$VNET" --subnet "$SUBNET"
+        --public-ip-address "" --nsg ""                    # no public IP, no NIC-level NSG (see section 2)
         --os-disk-size-gb 64 --storage-sku Premium_LRS
         --os-disk-delete-option Delete --nic-delete-option Delete --no-wait)
 
-az vm create "${common[@]}" --name spark-w1 --size Standard_D2s_v4 --public-ip-address spark-w1-pip
-az vm create "${common[@]}" --name spark-w2 --size Standard_D2s_v4 --public-ip-address spark-w2-pip
+az vm create "${common[@]}" --name spark-w1 --size Standard_D2s_v4
+az vm create "${common[@]}" --name spark-w2 --size Standard_D2s_v4
 
 for n in spark-w1 spark-w2; do
   az vm wait -g "$RG" -n "$n" --created
 done
-az vm list -g "$RG" -d -o table                     # the three VMs: "VM running" (spark-rg may hold other resources too)
+az vm list -g "$RG" -d -o table                     # the three VMs: "VM running"; only spark-master has a PublicIps value
 ```
+
+`az vm create` prints the private IP of each worker (`privateIpAddress`, in the subnet of `spark-master`, e.g. `172.16.0.5`). No `MYIP` or
+NSG is needed: you never ssh to a worker from the laptop. If you must, jump through the master: `ssh -i "$KEY" -J spark@$MASTER_IP spark@spark-w1`.
 
 Kafka data goes to `/var/lib/kafka/data` on the 64 GB OS disk of `spark-master`, together with the NFS share
 (`/srv/spark-shared`, which holds the repo, checkpoints and Parquet output). That is enough for a trial with 24 h retention. For a long run
@@ -247,8 +250,12 @@ bash infra/cluster/gen_cluster_id.sh                                       # wri
 ```
 
 The example already matches this runbook: `VM_PROFILE=vm_8gb_2cpu`, `KAFKA_BROKER_COUNT=1`, `SPARK_WORKER_HOSTS=(spark-w1 spark-w2)`,
-`KAFKA_HOST=spark-master`, `SSH_USER=spark` (the Azure admin account of all three VMs, with passwordless sudo), `SPARK_UID=1000`,
-`SPARK_GID=1000`. Only `NFS_NETWORK` needs your subnet. `00_prereqs.sh` stops with an error if the `spark` user on a VM does not have
+`KAFKA_HOST=spark-master`, `OUTBOUND_PROXY_HOST=spark-master` (the workers' apt / pip go through tinyproxy on the master), `SSH_USER=spark`
+(the Azure admin account of all three VMs, with passwordless sudo), `SPARK_UID=1000`, `SPARK_GID=1000`. Only `NFS_NETWORK` needs your subnet
+(`172.16.0.0/24` for the current `spark-master`); the proxy accepts the same CIDR.
+
+Before the workers exist, the same scripts run `spark-master` as a one-VM cluster: add `VM_PROFILE=vm_8gb_2cpu_single`,
+`SPARK_WORKER_HOSTS=(spark-master)` and `OUTBOUND_PROXY_HOST=` (see "Single-VM layout" in `README.md`). `00_prereqs.sh` stops with an error if the `spark` user on a VM does not have
 `SPARK_UID` / `SPARK_GID`.
 
 ## 7. Deploy
@@ -338,7 +345,7 @@ or delete only the resources created here.
 > commands below remove **the workers only**. Never delete `spark-master`, its public IP or the key `spark-master_key` as part of this cleanup.
 
 ```bash
-# stop paying for compute (disks and the public IPs still cost a little)
+# stop paying for compute (disks and the master's public IP still cost a little)
 az vm deallocate -g "$RG" --no-wait --ids $(az vm show -g "$RG" -n spark-master --query id -o tsv) \
   $(az vm show -g "$RG" -n spark-w1 --query id -o tsv) $(az vm show -g "$RG" -n spark-w2 --query id -o tsv)
 
@@ -351,11 +358,10 @@ az vm start -g "$RG" --no-wait -n spark-w2
 
 # remove only what this runbook created: the two workers (OS disks and NICs go with the VMs because of the *-delete-option flags)
 for n in spark-w1 spark-w2; do az vm delete -g "$RG" -n "$n" --yes; done
-for n in spark-w1 spark-w2; do az network public-ip delete -g "$RG" -n "$n-pip"; done
-az network nsg delete -g "$RG" -n spark-nsg          # only if you created it in section 2 and nothing else (e.g. spark-master) uses it
 ```
 
-The public IPs are Standard (static), so their addresses stay the same after a deallocate; the ssh rule only needs updating if your own address changes.
+The workers have no public IP or NSG of their own, so nothing else is left behind. The master's public IP keeps its address after a
+deallocate if it is a Standard (static) IP; check with `az vm show -d -g "$RG" -n spark-master --query publicIps -o tsv` after a restart.
 Keep the key `spark-master_key`: it is also the login key of `spark-master`. The workers are gone after the delete; `spark-master` keeps
 running (and billing) until you deallocate it as above.
 
@@ -364,7 +370,8 @@ running (and billing) until you deallocate it as above.
 | Symptom | Cause / fix |
 | --- | --- |
 | `getent hosts spark-w1` fails on `spark-master` | VM names are wrong, the VMs are in different VNets, or `spark-vnet` has a custom DNS server that does not know the VM names |
-| `apt-get`, `pip` or `docker pull` hangs | no outbound access; the VM has no public IP and the subnet has no NAT gateway (section 3 gives each VM a public IP) |
+| `apt-get`, `pip` or the Spark download hangs on a worker | the proxy is not used or not reachable: `deploy.sh proxy` must have run, `OUTBOUND_PROXY_HOST=spark-master` in `cluster.env`, and from the worker `curl -x http://spark-master:8888 -I https://pypi.org` must answer; tinyproxy only accepts `NFS_NETWORK`, so that CIDR must be the real subnet |
+| `add-apt-repository ppa:deadsnakes/ppa` fails on a worker | it talks to launchpad over HTTPS through the proxy; re-run `deploy.sh spark` (it is idempotent), or check `sudo tail /var/log/tinyproxy/tinyproxy.log` on `spark-master` |
 | `Could not get lock /var/lib/dpkg/lock-frontend` | `unattended-upgrades` is running on a new VM; wait a few minutes and re-run the phase |
 | `SkuNotAvailable` / `QuotaExceeded` on `az vm create` | the size or the family quota is missing in `$LOC`; check section 0, use another 2 vCPU / 8 GiB size, or raise the quota. Remember that 6 vCPUs are fully used by these three VMs |
 | `LocationNotAvailableForResourceType`, or the VM lands in another region | `$LOC` must be the account's region and the same as `spark-vnet`'s; `az network vnet show -g spark-rg -n spark-vnet --query location` |
@@ -372,7 +379,7 @@ running (and billing) until you deallocate it as above.
 | `bash\r: No such file or directory` | CRLF line endings; run the `sed -i 's/\r$//'` line from section 5 |
 | Workers show the share unmounted after a restart | workers booted before the master; on each worker run `sudo mount -a && sudo systemctl restart spark-worker` |
 | `ssh: Permission denied (publickey)` from `spark-master` | private key not copied or wrong mode; redo the `scp` and `chmod 600` in section 4 |
-| ssh from the laptop times out | your public address changed; update the `ssh-from-me` rule (section 2) |
+| ssh from the laptop to `spark-master` times out | your public address changed; update the ssh rule of `spark-master`'s NSG in the portal |
 | Client connects to Kafka, then times out | the client is outside the VNet and cannot resolve `spark-master`; run it from `spark-master` |
 
 Everything else (Kafka quorum, Spark registration, NFS permissions, OOM kills, `cluster.id` mismatch) is covered by the troubleshooting table

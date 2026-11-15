@@ -6,7 +6,8 @@
 #   bash infra/cluster/deploy.sh all          # everything below, in order
 #   bash infra/cluster/deploy.sh <phase>...   # one or more phases
 #
-# Phases: ssh  env  prereqs  nfs  repo  kafka  spark  topics  health
+# Phases: ssh  env  proxy  prereqs  nfs  repo  kafka  spark  topics  health
+# (proxy: tinyproxy on OUTBOUND_PROXY_HOST for workers without a public IP; a no-op when OUTBOUND_PROXY_HOST is empty)
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -41,6 +42,14 @@ phase_env() {
     render_runtime_env > "${CLUSTER_DIR}/cluster.runtime.env"
     log "wrote ${CLUSTER_DIR}/cluster.runtime.env"
     show_budget
+}
+
+phase_proxy() {
+    if [[ -z "${OUTBOUND_PROXY_HOST}" ]]; then
+        log "OUTBOUND_PROXY_HOST is empty: no proxy"
+        return 0
+    fi
+    run_script "${OUTBOUND_PROXY_HOST}" 05_proxy.sh
 }
 
 phase_prereqs() {
@@ -109,6 +118,7 @@ run_phase() {
     case "$1" in
         ssh) phase_ssh ;;
         env) phase_env ;;
+        proxy) phase_proxy ;;
         prereqs) phase_prereqs ;;
         nfs) phase_nfs ;;
         repo) phase_repo ;;
@@ -116,15 +126,15 @@ run_phase() {
         spark) phase_spark ;;
         topics) phase_topics ;;
         health) phase_health ;;
-        *) die "unknown phase '$1' (ssh env prereqs nfs repo kafka spark topics health all)" ;;
+        *) die "unknown phase '$1' (ssh env proxy prereqs nfs repo kafka spark topics health all)" ;;
     esac
 }
 
 validate_layout
 phases=("$@")
-[[ "${#phases[@]}" -gt 0 ]] || die "usage: deploy.sh all | <phase>...   (phases: ssh env prereqs nfs repo kafka spark topics health)"
+[[ "${#phases[@]}" -gt 0 ]] || die "usage: deploy.sh all | <phase>...   (phases: ssh env proxy prereqs nfs repo kafka spark topics health)"
 if [[ "${phases[0]}" == "all" ]]; then
-    phases=(ssh env prereqs nfs repo kafka spark topics health)
+    phases=(ssh env proxy prereqs nfs repo kafka spark topics health)
 fi
 for p in "${phases[@]}"; do
     log "=== phase: ${p}"

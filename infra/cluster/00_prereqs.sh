@@ -7,6 +7,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 require_root
 validate_layout
+use_outbound_proxy
 
 export DEBIAN_FRONTEND=noninteractive
 log "installing packages"

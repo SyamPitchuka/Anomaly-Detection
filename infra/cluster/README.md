@@ -54,6 +54,33 @@ That gives 4 workers x 2 executors = 8 executors, 16 cores, and the bootstrap li
 `KAFKA_BROKER_COUNT` should be 1 or 3 (an even count gives no extra fault tolerance).
 Do not run 3 brokers on the 2 vCPU profile: the master budget would be 7552 MB of 8192 MB, which leaves no room for a second driver.
 
+### Single-VM layout (before the workers exist)
+
+`spark-master` alone can be the whole cluster: Spark master **and** one worker, the broker, the NFS share and the driver on one
+2 vCPU / 8 GB VM. Jobs still go through `spark-submit --master spark://spark-master:7077` with checkpoints on `/srv/spark-shared`,
+so the submit path, the Kafka connector and the shared checkpoints are exercised exactly as on the 3-VM cluster. Add to `cluster.env`:
+
+```bash
+VM_PROFILE=vm_8gb_2cpu_single
+SPARK_WORKER_HOSTS=(spark-master)
+OUTBOUND_PROXY_HOST=                 # nothing to proxy: the only VM has the public IP
+```
+
+Then `deploy.sh all` as usual. Spark totals: **1 executor, 2 cores** (`submit.sh -e 1 -c 2`). `lib.sh` adds the worker side to the master's
+budget when the master is also a worker: 1024 Kafka + 512 master daemon + 1024 driver + 384 overhead + 1 x (1536 + 1024) executor + 512 worker
+daemon + 1024 OS = **7040 MB of 8192**. Kafka, the driver, the executor, the replay producer and the soak sampler share 2 vCPUs, so throughput from this
+layout is a lower bound, not a scaling result (E2 needs the real workers). To grow into the 3-VM layout later, drop those three lines, re-run
+`deploy.sh all` and `sudo systemctl disable --now spark-worker` on `spark-master`.
+
+### Workers without a public IP (outbound proxy)
+
+On Azure only `spark-master` has a public IP (see `AZURE.md`). The workers still need outbound HTTP(S) for apt, the Apache archive, the deadsnakes PPA,
+PyPI and `download.pytorch.org`. `deploy.sh` phase `proxy` (`05_proxy.sh`) installs **tinyproxy** on `OUTBOUND_PROXY_HOST` (default `spark-master`),
+port `OUTBOUND_PROXY_PORT` (8888), accepting only `NFS_NETWORK`. `00_prereqs.sh`, `11_nfs_client.sh` and `30_spark_node.sh` call
+`use_outbound_proxy` (in `lib.sh`), which on every other VM exports `http_proxy` / `https_proxy` and writes `/etc/apt/apt.conf.d/95cluster-proxy`.
+Nothing else needs the internet at run time: Docker and Maven (the Kafka connector) are only used on `spark-master`, and Spark, Kafka and NFS traffic
+stays inside the VNet. Set `OUTBOUND_PROXY_HOST=` (empty) if your workers have their own outbound access (public IP or NAT gateway).
+
 ### Memory budget (8 GB per VM)
 
 `lib.sh` computes this from the VM profile (`profiles/vm_8gb_2cpu.env`, see "VM profiles" below) and `deploy.sh` refuses to continue if a VM would exceed `VM_MEMORY`
@@ -129,7 +156,7 @@ python -m py_compile infra/cluster/*.py
 cd Anomaly-Detection
 cp infra/cluster/cluster.env.example infra/cluster/cluster.env     # edit NFS_NETWORK (and SSH_USER, hostnames if yours differ)
 bash infra/cluster/gen_cluster_id.sh                               # writes KAFKA_CLUSTER_ID once
-bash infra/cluster/deploy.sh all                                   # ssh env prereqs nfs repo kafka spark topics health
+bash infra/cluster/deploy.sh all                                   # ssh env proxy prereqs nfs repo kafka spark topics health
 ```
 
 `deploy.sh all` ends with the health check and prints `PASS` or `FAIL`. Each phase is idempotent; run one on its own with
@@ -139,6 +166,7 @@ bash infra/cluster/deploy.sh all                                   # ssh env pre
 | --- | --- |
 | `ssh` | checks ssh + passwordless sudo on every VM |
 | `env` | writes `cluster.runtime.env` (bootstrap list, broker count, master URL, sizes) for the Python tools and prints the memory budget |
+| `proxy` | `05_proxy.sh` on `OUTBOUND_PROXY_HOST`: tinyproxy for workers without a public IP (no-op when `OUTBOUND_PROXY_HOST` is empty) |
 | `prereqs` | `00_prereqs.sh` on all VMs: Java 17, base tools, the `spark` user (fixed uid), hostname resolution check |
 | `nfs` | `10_nfs_server.sh` on the NFS host, `11_nfs_client.sh` on the other Spark VMs |
 | `repo` | copies the working tree (without `.venv`, `.git`, `checkpoints/`) to `$REPO_DIR` on the share |

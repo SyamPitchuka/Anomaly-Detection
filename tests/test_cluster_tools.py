@@ -236,3 +236,55 @@ def test_runtime_env_carries_the_broker_count_for_the_python_tools():
     assert "KAFKA_BOOTSTRAP=spark-master:9092" in lines
     assert "SPARK_WORKER_HOSTS=spark-w1,spark-w2" in lines
     assert "SPARK_CORES_MAX=4" in lines
+
+
+def _single_vm(profile="vm_8gb_2cpu_single"):
+    """cluster.env.example + the single-VM layout (master is the only worker, no proxy)."""
+    return ('tmp_env="$(mktemp)"; cat cluster.env.example > "$tmp_env"; '
+            f'echo "VM_PROFILE={profile}" >> "$tmp_env"; '
+            'echo "SPARK_WORKER_HOSTS=(spark-master)" >> "$tmp_env"; '
+            'echo "OUTBOUND_PROXY_HOST=" >> "$tmp_env"; '
+            'export CLUSTER_ENV="$tmp_env"; ')
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_single_vm_layout_counts_master_and_worker_in_one_budget():
+    out = _lib(_single_vm() + 'source ./lib.sh && validate_layout && echo '
+               '"$WORKER_NEED_MB|$MASTER_NEED_MB|$VM_MB|$SPARK_CORES_MAX|$SPARK_WORKER_COUNT"')
+    assert out.returncode == 0, out.stderr
+    worker, master, vm, cores_max, workers = (int(x) for x in out.stdout.strip().splitlines()[-1].split("|"))
+    # worker side 1 x (1536 + 1024) + 512 + 1024 OS = 4096; whole VM: 1024 Kafka + 512 + 1024 + 384 + 1024 OS + 4096 - 1024 = 7040
+    assert worker == 4096 and master == 7040 and master <= vm == 8192
+    assert (cores_max, workers) == (2, 1)
+    # the 3-VM profile on a single VM does not fit: the combined budget must be refused
+    big = _lib(_single_vm("vm_8gb_2cpu") + 'source ./lib.sh && (validate_layout)')
+    assert big.returncode != 0 and "needs" in big.stderr
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_kafka_on_a_worker_that_is_not_the_master_is_still_refused():
+    script = ('tmp_env="$(mktemp)"; cat cluster.env.example > "$tmp_env"; '
+              'echo "KAFKA_HOST=spark-w1" >> "$tmp_env"; export CLUSTER_ENV="$tmp_env"; '
+              'source ./lib.sh && (validate_layout)')
+    out = _lib(script)
+    assert out.returncode != 0
+    assert "KAFKA_HOST must not be a Spark worker" in out.stderr
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_use_outbound_proxy_sets_env_and_apt_config_and_is_a_noop_without_proxy():
+    script = ('conf="$(mktemp -u)"; export APT_PROXY_CONF="$conf"; source ./lib.sh && use_outbound_proxy && '
+              'echo "$https_proxy|$no_proxy"; cat "$conf"')
+    out = _lib(script, OUTBOUND_PROXY_HOST="proxy-vm-not-this-host")
+    assert out.returncode == 0, out.stderr
+    lines = out.stdout.strip().splitlines()
+    proxy, no_proxy = next(l for l in lines if "|" in l).split("|")
+    assert proxy == "http://proxy-vm-not-this-host:8888"
+    assert "spark-w1" in no_proxy and "spark-master" in no_proxy
+    assert 'Acquire::https::Proxy "http://proxy-vm-not-this-host:8888/";' in lines
+    # empty OUTBOUND_PROXY_HOST: nothing exported, no apt file
+    script = ('conf="$(mktemp -u)"; export APT_PROXY_CONF="$conf"; source ./lib.sh && use_outbound_proxy && '
+              'echo "proxy=[${https_proxy:-}]"; test ! -e "$conf" && echo no-apt-file')
+    out = _lib(script, OUTBOUND_PROXY_HOST="")
+    assert out.returncode == 0, out.stderr
+    assert "proxy=[]" in out.stdout and "no-apt-file" in out.stdout
