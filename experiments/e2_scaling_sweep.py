@@ -30,6 +30,7 @@ Run ON THE SPARK MASTER VM from the repo root ($REPO_DIR), as the 'spark' user:
     python experiments/e2_scaling_sweep.py --configs 1x2 2x2 4x2 --repeats 3 --records 4000000
     python experiments/e2_scaling_sweep.py --weak --records 1000000
     python experiments/e2_scaling_sweep.py --dry-run                        # print the commands only
+    python experiments/e2_scaling_sweep.py --run-timeout 2400                # one run may take 40 min (default 30)
     python experiments/e2_scaling_sweep.py --from-json docs/results/e2_cluster.json   # redraw (any machine)
 """
 from __future__ import annotations
@@ -37,6 +38,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -317,12 +320,53 @@ def write_outputs(runs: list[dict], meta: dict, out_dir: Path, notes: str | None
 
 # ---- main -----------------------------------------------------------------------------------------------
 
-def _load_run(path: Path, rid: str, cfg: tuple[int, int], rc: int) -> dict:
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    """Send `sig` to the run's whole process group (POSIX: it was started in its own session), else to the process."""
+    try:
+        if os.name == "posix":
+            os.killpg(proc.pid, sig)
+        else:                       # Windows (tests only): no process groups, terminate the process itself
+            proc.terminate()
+    except OSError:                 # includes ProcessLookupError: already gone
+        pass
+
+
+def run_drain(cmd: list[str], cwd: Path, timeout: float, kill_grace: float = 180) -> tuple[int, bool]:
+    """Run one drain_test.sh in its own process group. Returns (exit code, timed out).
+    On timeout: SIGTERM to the group (drain_test.sh's trap then stops score_job, which takes up to ~150 s), after
+    `kill_grace` s SIGKILL. Ctrl+C on the sweep is forwarded the same way, then re-raised."""
+    proc = subprocess.Popen(cmd, cwd=cwd, start_new_session=(os.name == "posix"))
+    try:
+        return proc.wait(timeout=timeout), False
+    except subprocess.TimeoutExpired:
+        timed_out, first = True, signal.SIGTERM
+    except KeyboardInterrupt:
+        timed_out, first = None, signal.SIGINT
+    _signal_group(proc, first)
+    try:
+        proc.wait(timeout=kill_grace)
+    except subprocess.TimeoutExpired:
+        _signal_group(proc, getattr(signal, "SIGKILL", signal.SIGTERM))
+        proc.wait()
+    if timed_out is None:
+        raise KeyboardInterrupt
+    return proc.returncode, True
+
+
+def _load_run(path: Path, rid: str, cfg: tuple[int, int], rc: int, timed_out: bool = False,
+              timeout: float | None = None) -> dict:
+    """The run's result JSON if drain_test.sh wrote one, else a failed row. A JSON that says 'drained' stays a
+    successful run even if the run then timed out while stopping score_job (flagged with stop_timed_out)."""
     if path.exists():
         r = json.loads(path.read_text(encoding="utf-8"))
         r.pop("batches_detail", None)
+        if timed_out:
+            r["stop_timed_out"] = True
+            if r.get("status") != "drained":
+                r["status"] = f"failed (timeout after {timeout:.0f} s, {r.get('status', '?')})"
         return r
-    return {"run_id": rid, "status": f"failed (exit {rc}, no result file)", "executors": cfg[0], "cores": cfg[1]}
+    why = f"timeout after {timeout:.0f} s" if timed_out else f"exit {rc}"
+    return {"run_id": rid, "status": f"failed ({why}, no result file)", "executors": cfg[0], "cores": cfg[1]}
 
 
 def main(argv=None) -> int:
@@ -341,6 +385,9 @@ def main(argv=None) -> int:
     ap.add_argument("--cluster", default=None, help="one line describing the VMs, shown in the report")
     ap.add_argument("--from-json", type=Path, default=None, help="redraw from a saved e2_cluster.json")
     ap.add_argument("--dry-run", action="store_true", help="print the drain_test.sh commands and exit")
+    ap.add_argument("--run-timeout", type=float, default=1800,
+                    help="seconds one drain_test.sh may take; then its process group is killed, the run is recorded "
+                         "as failed and the sweep goes on (default 1800)")
     ap.add_argument("drain_args", nargs="*", help="after --: extra drain_test.sh options (e.g. -p 32)")
     args = ap.parse_args(argv)
     notes = args.notes.read_text(encoding="utf-8") if args.notes else None
@@ -353,6 +400,8 @@ def main(argv=None) -> int:
 
     if args.replicate < 1 or args.topic_partitions < 1:
         ap.error("--replicate and --topic-partitions must be >= 1")
+    if args.run_timeout <= 0:
+        ap.error("--run-timeout must be > 0")
     configs = [parse_config(c) for c in args.configs]
     sweep_id = "e2_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     plan = []
@@ -371,13 +420,15 @@ def main(argv=None) -> int:
             "configs": args.configs, "repeats": args.repeats, "records": args.records,
             "max_offsets_per_trigger": args.max_offsets_per_trigger, "weak": args.weak,
             "replicate": None if args.weak else args.replicate, "topic_partitions": args.topic_partitions,
-            "cluster": args.cluster, "argv": " ".join(argv if argv is not None else sys.argv[1:])}
+            "cluster": args.cluster, "run_timeout_s": args.run_timeout, "argv": " ".join(argv if argv is not None else sys.argv[1:])}
     runs: list[dict] = []
     for i, (rid, cfg, cmd) in enumerate(plan, 1):
         print(f"[{i}/{len(plan)}] {rid}: {' '.join(cmd)}", flush=True)
         t = time.monotonic()
-        rc = subprocess.call(cmd, cwd=ROOT)
-        run = _load_run(args.run_dir / f"{rid}.json", rid, cfg, rc)
+        rc, timed_out = run_drain(cmd, ROOT, args.run_timeout)
+        if timed_out:
+            print(f"    TIMEOUT after {args.run_timeout:.0f} s: killed the run's process group (exit {rc})", flush=True)
+        run = _load_run(args.run_dir / f"{rid}.json", rid, cfg, rc, timed_out, args.run_timeout)
         runs.append(run)
         print(f"    {run.get('status')} in {time.monotonic() - t:.0f} s: "
               f"{_fmt(_num(run.get('records_per_s')), ',.0f')} records/s", flush=True)

@@ -148,3 +148,72 @@ def test_from_json_redraw_and_dry_run(tmp_path, capsys):
     assert capsys.readouterr().out.strip().endswith("-r 1 -P 8 -p 64")
     with pytest.raises(SystemExit):
         E.main(["--dry-run", "--replicate", "0"])
+
+
+# ---- per-run timeout ----------------------------------------------------------------------------------
+
+def test_run_drain_returns_exit_code_or_kills_on_timeout(tmp_path):
+    import sys
+    import time
+    assert E.run_drain([sys.executable, "-c", "raise SystemExit(3)"], tmp_path, timeout=30) == (3, False)
+    t = time.monotonic()
+    rc, timed_out = E.run_drain([sys.executable, "-c", "import time; time.sleep(60)"], tmp_path, timeout=1,
+                                kill_grace=10)
+    assert timed_out and rc != 0 and time.monotonic() - t < 15
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="process groups are POSIX only")
+def test_run_drain_timeout_kills_the_whole_process_group(tmp_path):
+    # the run ignores SIGTERM and leaves a grandchild: both must be gone after the SIGKILL that follows the grace
+    import os
+    import sys
+    pidfile = tmp_path / "child.pid"
+    script = (f"import signal, subprocess, sys, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+              f"p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+              f"open({str(pidfile)!r}, 'w').write(str(p.pid)); time.sleep(60)")
+    rc, timed_out = E.run_drain([sys.executable, "-c", script], tmp_path, timeout=2, kill_grace=1)
+    assert timed_out and rc == -9
+    child = int(pidfile.read_text())
+    for _ in range(50):                       # the orphaned grandchild is reaped by init shortly after SIGKILL
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        __import__("time").sleep(0.1)
+    else:
+        pytest.fail("grandchild survived the group kill")
+
+
+def test_main_records_a_timed_out_run_as_failed_and_continues(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run_drain(cmd, cwd, timeout, kill_grace=180):
+        rid = cmd[cmd.index("--run-id") + 1]
+        calls.append((rid, timeout))
+        if len(calls) == 1:                    # 1st run hangs: no result file
+            return -15, True
+        if len(calls) == 2:                    # 2nd run drained, then hung on stop: stays a success
+            (tmp_path / "runs" / f"{rid}.json").write_text(json.dumps(_run(2, 2, 2000, run_id=rid)))
+            return -15, True
+        (tmp_path / "runs" / f"{rid}.json").write_text(json.dumps(_run(4, 2, 3500, run_id=rid)))
+        return 0, False
+
+    (tmp_path / "runs").mkdir()
+    monkeypatch.setattr(E, "run_drain", fake_run_drain)
+    rc = E.main(["--configs", "1x2", "2x2", "4x2", "--repeats", "1", "--run-timeout", "5",
+                 "--run-dir", str(tmp_path / "runs"), "--out-dir", str(tmp_path / "out")])
+    assert rc == 1 and len(calls) == 3 and all(t == 5 for _, t in calls)
+    runs = json.loads((tmp_path / "out" / "e2_cluster.json").read_text(encoding="utf-8"))["runs"]
+    assert runs[0]["status"] == "failed (timeout after 5 s, no result file)"
+    assert runs[1]["status"] == "drained" and runs[1]["stop_timed_out"] is True
+    assert runs[2]["status"] == "drained" and "stop_timed_out" not in runs[2]
+    with pytest.raises(SystemExit):
+        E.main(["--run-timeout", "0"])
+
+
+def test_load_run_timeout_with_undrained_result(tmp_path):
+    p = tmp_path / "r.json"
+    p.write_text(json.dumps(_run(1, 2, None, status="timeout")))
+    r = E._load_run(p, "r", (1, 2), -15, timed_out=True, timeout=1800)
+    assert r["status"] == "failed (timeout after 1800 s, timeout)"
+    assert E._load_run(tmp_path / "none.json", "r", (1, 2), 2)["status"] == "failed (exit 2, no result file)"
