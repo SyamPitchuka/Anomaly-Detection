@@ -96,6 +96,60 @@ def test_describe_counts_partitions_replication_and_leaderless():
     assert create_topics_cluster.describe(meta, "missing") == (0, 0, 0)
 
 
+def test_partitions_override_parsing():
+    known = {"telemetry.smd": {"partitions_cluster": 8}, "anomalies": {"partitions_cluster": 8}}
+    over = create_topics_cluster.parse_partitions(["telemetry.smd=32"], known)
+    assert over == {"telemetry.smd": 32}
+    assert create_topics_cluster.want_partitions(known, over) == {"telemetry.smd": 32, "anomalies": 8}
+    assert create_topics_cluster.want_partitions(known, {}) == {"telemetry.smd": 8, "anomalies": 8}
+    for bad in ("telemetry.smd", "telemetry.smd=0", "telemetry.smd=x", "nope=4", "=4"):
+        with pytest.raises(ValueError):
+            create_topics_cluster.parse_partitions([bad], known)
+
+
+class _CreatingAdmin:
+    """AdminClient stand-in for main(): create_topics records the partition counts and adds the topics."""
+
+    def __init__(self, existing=None):
+        self.parts = dict(existing or {})
+        self.created = {}
+
+    def list_topics(self, timeout=None):
+        topics = {n: SimpleNamespace(partitions={i: SimpleNamespace(leader=0, replicas=[0]) for i in range(p)})
+                  for n, p in self.parts.items()}
+        return SimpleNamespace(topics=topics, brokers={0: object()})
+
+    def delete_topics(self, names, operation_timeout=None):
+        for n in names:
+            self.parts.pop(n, None)
+        return {n: SimpleNamespace(result=lambda: None) for n in names}
+
+    def create_topics(self, new):
+        for t in new:
+            self.created[t.topic] = t.num_partitions
+            self.parts[t.topic] = t.num_partitions
+        return {t.topic: SimpleNamespace(result=lambda: None) for t in new}
+
+
+def test_main_creates_and_verifies_the_partition_override(monkeypatch, capsys):
+    admin = _CreatingAdmin({"telemetry.smd": 8, "telemetry.alibaba": 32, "anomalies": 8})
+    monkeypatch.setattr(create_topics_cluster, "AdminClient", lambda conf: admin)
+    argv = ["--bootstrap", "b:9092", "--brokers", "1"]
+    assert create_topics_cluster.main(argv + ["--recreate", "telemetry.smd", "--partitions", "telemetry.smd=32"]) == 0
+    assert admin.created == {"telemetry.smd": 32}
+    assert "telemetry.smd: 32 partitions (want 32)" in capsys.readouterr().out
+    # without the override the 32-partition topic no longer matches topics.yaml (8): WRONG, exit 1
+    assert create_topics_cluster.main(argv) == 1
+    assert "telemetry.smd: 32 partitions (want 8)" in capsys.readouterr().out
+    # an existing topic is never altered: the override alone does not fix it
+    admin2 = _CreatingAdmin({"telemetry.smd": 8, "telemetry.alibaba": 32, "anomalies": 8})
+    monkeypatch.setattr(create_topics_cluster, "AdminClient", lambda conf: admin2)
+    assert create_topics_cluster.main(argv + ["--partitions", "telemetry.smd=32"]) == 1
+    assert admin2.created == {}
+    with pytest.raises(SystemExit):
+        create_topics_cluster.main(argv + ["--partitions", "telemetry.smd=0"])
+
+
 def test_replication_is_capped_at_the_number_of_brokers():
     # contracts/topics.yaml says replication_cluster = 3; a one-broker cluster can only hold 1
     assert cluster_common.effective_replication(3, 1) == 1

@@ -302,6 +302,30 @@ tree, so check its `--help`).
 `tools/check_spark_kafka.py` itself uses `local[2]`, so through `run_job.py` it checks that the cluster's executors can reach Kafka and that
 the connector resolves.
 
+## E2 scaling: backlog drain (`drain_test.sh`, `experiments/e2_scaling_sweep.py`)
+
+Strong scaling is measured as the time score_job needs to consume a fixed Kafka backlog. `drain_test.sh` recreates `telemetry.smd` with
+`--topic-partitions P` partitions (default 32, via `create_topics_cluster.py --partitions telemetry.smd=P`; `contracts/topics.yaml` keeps 8
+for the pipeline) and stops if the broker reports another count. `spark.sql.shuffle.partitions` defaults to 2 × executors × cores. It
+replays N records at max speed with the job **not** running (`replay.py --speedup 0 --limit`, several event-time-shifted passes when N is
+more than one pass), waits until the broker holds all N, then starts score_job via `submit.sh -e E -c C -m <maxOffsetsPerTrigger>`
+with `--reset --trigger '0 seconds'` and polls `data/latency_stream/progress.jsonl` until the consumer offset reaches the topic end.
+`drain_monitor.py` writes `data/scaling/<run-id>.json` (summary + every batch) and appends a row to `data/scaling/drain_runs.csv`:
+drain seconds, records/s, batches, mean / p95 batch duration, executors seen (driver UI, `localhost:4040`), and the settings
+replicate, topic partitions and shuffle partitions. The sweep's strong-scaling runs use `--replicate 4` by default (28 SMD machines →
+112 keys, so the stateful stage is not capped at 28 tasks).
+
+```bash
+# on spark-master, from the shared repo, as the spark user
+sudo -u spark bash infra/cluster/drain_test.sh -e 2 -c 2 -n 2000000 -m 200000           # one run
+sudo -u spark /opt/anomaly-venv/bin/python experiments/e2_scaling_sweep.py \
+    --configs 1x2 2x2 3x2 4x2 --repeats 3 --records 2000000                           # -> docs/results/e2_cluster.md + .png
+sudo -u spark /opt/anomaly-venv/bin/python experiments/e2_scaling_sweep.py --weak --dry-run   # weak scaling: replay.py --replicate
+```
+
+Weak scaling (`--weak`, or `drain_test.sh -r K`) sends K renamed copies of every machine (`<machine>-r1..-rK`); score_job scores a
+copy with its original machine's models, so each copy costs the same as a real machine.
+
 ## Configuration reference (`cluster.env`)
 
 | Variable | Meaning |

@@ -55,6 +55,13 @@ the window), emit_ts_ms (wall clock once the batch's scores file and anomalies a
 The state keeps the newest ingest time per open window for this. src/streaming/latency_report.py reads it.
 Each query progress is also appended to data/latency_stream/progress.jsonl.
 
+Replicated machines (replay.py --replicate K, weak scaling): an entity_id <machine>-r<k> that the models do
+not know is scored with the models of <machine> (model_entity()), so every copy costs as much as a real
+machine. The output keeps the replica's own entity_id.
+
+Rate limit: --max-offsets-per-trigger N caps the Kafka records per micro-batch (maxOffsetsPerTrigger;
+default unset = no cap, Spark reads everything available). infra/cluster/drain_test.sh sets it.
+
 Stopping without Ctrl+C (for scripted runs): --max-seconds S stops the query after S wall seconds,
 --idle-stop S once rows were seen and no micro-batch had input rows for S seconds.
 
@@ -68,6 +75,7 @@ docs/results/e2e_latency_notes.md.
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -172,6 +180,18 @@ def load_tier1_baselines(path: Path = TIER1_PATH, metrics: list[str] = METRICS) 
         mad[g["col"].to_numpy()] = g["mad"].to_numpy(dtype=np.float64)
         out[entity] = (median, mad)
     return out
+
+
+REPLICA_RE = re.compile(r"^(?P<base>.+)-r[1-9][0-9]*$")   # replay.py --replicate: <machine>-r<k>
+
+
+def model_entity(entity: str, known) -> str:
+    """The entity whose models score `entity`: itself if `known` has it, else for a replica
+    <machine>-r<k> (replay.py --replicate) the original <machine> when `known` has that, else itself."""
+    if entity in known:
+        return entity
+    m = REPLICA_RE.match(entity)
+    return m.group("base") if m and m.group("base") in known else entity
 
 
 def tier1_scores(entity: str, means: np.ndarray, baselines: dict | None) -> tuple[np.ndarray, list]:
@@ -361,17 +381,18 @@ def step(entity: str, rows: pd.DataFrame, st: dict, models: dict) -> tuple[pd.Da
     n = len(means)
     i_mean = models["ae"]["aggs"].index("mean")   # previous window means, before score_windows updates hist_x
     history = st["hist_x"][:, i_mean * K:(i_mean + 1) * K]
-    ae_score, ae_flag, top = score_windows(entity, means, maxes, split, st, models["ae"])
+    mkey = model_entity(entity, models["ae"]["scalers"])   # a replica <machine>-r<k> uses <machine>'s models
+    ae_score, ae_flag, top = score_windows(mkey, means, maxes, split, st, models["ae"])
     out = pd.DataFrame({"entity_id": [entity] * n, "ws_us": w["open_starts"], "split": split, "label": label,
                         "ae_score": ae_score, "ae_flag": pd.Series(ae_flag, dtype=object), "top_metrics": top})
-    if entity not in models["ae"]["scalers"]:
+    if mkey not in models["ae"]["scalers"]:
         out["ae_flag"] = None
-    out["tier1_score"], out["tier1_flag"] = tier1_scores(entity, means, models.get("tier1"))
+    out["tier1_score"], out["tier1_flag"] = tier1_scores(mkey, means, models.get("tier1"))
     out["tier2_score"], out["tier2_flag"], out["pca_score"] = np.nan, None, np.nan
     module = models.get("baselines_module")
     if module is not None:
         pdf = pd.DataFrame(np.hstack([means, maxes]), columns=AE.feature_names(METRICS, ("mean", "max")))
-        pdf.insert(0, "entity_id", entity)
+        pdf.insert(0, "entity_id", mkey)
         pdf.insert(1, "window_start", w["open_starts"])
         pdf.insert(2, "split", split)
         res = module.score_baselines(pdf, models, history)
@@ -470,6 +491,14 @@ def write_latency_file(pdf: pd.DataFrame, batch_id: int, emit_ts_ms: int, out_di
     return path
 
 
+def positive_int(text: str) -> int:
+    """argparse type: an integer >= 1."""
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {value}")
+    return value
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--input", choices=("kafka", "files"), default="kafka")
@@ -492,6 +521,8 @@ def main(argv=None) -> int:
                         help="stop the query after this many wall seconds")
     parser.add_argument("--idle-stop", type=float, default=None,
                         help="stop once rows were seen and no micro-batch had input rows for this many seconds")
+    parser.add_argument("--max-offsets-per-trigger", type=positive_int, default=None, metavar="N",
+                        help="kafka input: at most N records per micro-batch (maxOffsetsPerTrigger; default: no cap)")
     args = parser.parse_args(argv)
 
     if not (AE_DIR / "model.pt").exists():
@@ -518,7 +549,9 @@ def main(argv=None) -> int:
                         shuffle_partitions=args.shuffle_partitions)
     spark.sparkContext.setLogLevel("ERROR")
     if kafka:
-        telemetry, what = read_telemetry(spark), S.TOPIC_SMD
+        telemetry, what = read_telemetry(spark, args.max_offsets_per_trigger), S.TOPIC_SMD
+        if args.max_offsets_per_trigger is not None:
+            what += f" (maxOffsetsPerTrigger {args.max_offsets_per_trigger})"
     else:
         telemetry, names = read_files(spark, args.machines, args.files_per_trigger)
         what = f"{len(names)} machine files ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"
