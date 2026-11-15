@@ -304,12 +304,16 @@ the connector resolves.
 
 ## E2 scaling: backlog drain (`drain_test.sh`, `experiments/e2_scaling_sweep.py`)
 
-Strong scaling is measured as the time score_job needs to consume a fixed Kafka backlog. `drain_test.sh` recreates `telemetry.smd`,
+Strong scaling is measured as the time score_job needs to consume a fixed Kafka backlog. `drain_test.sh` recreates `telemetry.smd` with
+`--topic-partitions P` partitions (default 32, via `create_topics_cluster.py --partitions telemetry.smd=P`; `contracts/topics.yaml` keeps 8
+for the pipeline) and stops if the broker reports another count. `spark.sql.shuffle.partitions` defaults to 2 × executors × cores. It
 replays N records at max speed with the job **not** running (`replay.py --speedup 0 --limit`, several event-time-shifted passes when N is
 more than one pass), waits until the broker holds all N, then starts score_job via `submit.sh -e E -c C -m <maxOffsetsPerTrigger>`
 with `--reset --trigger '0 seconds'` and polls `data/latency_stream/progress.jsonl` until the consumer offset reaches the topic end.
 `drain_monitor.py` writes `data/scaling/<run-id>.json` (summary + every batch) and appends a row to `data/scaling/drain_runs.csv`:
-drain seconds, records/s, batches, mean / p95 batch duration, executors seen (driver UI, `localhost:4040`).
+drain seconds, records/s, batches, mean / p95 batch duration, executors seen (driver UI, `localhost:4040`), and the settings
+replicate, topic partitions and shuffle partitions. The sweep's strong-scaling runs use `--replicate 4` by default (28 SMD machines →
+112 keys, so the stateful stage is not capped at 28 tasks).
 
 ```bash
 # on spark-master, from the shared repo, as the spark user

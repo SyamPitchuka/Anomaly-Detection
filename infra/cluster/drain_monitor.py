@@ -1,6 +1,9 @@
 """Kafka / progress-log / Spark-UI side of the E2 backlog-drain test (used by drain_test.sh).
 
-Two sub-commands:
+Three sub-commands:
+
+    drain_monitor.py partitions --bootstrap B --topic T
+        Print the topic's partition count as the broker reports it (0 if the topic does not exist).
 
     drain_monitor.py wait-written --bootstrap B --topic T --expect N [--timeout S]
         Wait until the topic's end offsets (summed over partitions) reach N, i.e. every replayed record is
@@ -42,7 +45,7 @@ from pathlib import Path
 
 CSV_NAME = "drain_runs.csv"
 CSV_FIELDS = ["run_id", "ts_utc", "status", "executors", "cores", "total_cores", "max_offsets_per_trigger",
-              "replicate", "shuffle_partitions", "records", "consumed", "drain_s", "records_per_s",
+              "replicate", "topic_partitions", "shuffle_partitions", "records", "consumed", "drain_s", "records_per_s",
               "steady_records_per_s", "batches", "batch_mean_s", "batch_p95_s", "first_batch_s", "wall_s",
               "executors_seen", "executors_max_active", "executor_cores_max"]
 POLL_S = 2.0
@@ -224,6 +227,12 @@ def build_result(run_id: str, status: str, meta: dict, records: int, batches: li
 
 # ---- I/O (cluster only) ---------------------------------------------------------------------------------
 
+def partition_count(metadata, topic: str) -> int:
+    """Partitions of `topic` in a confluent_kafka ClusterMetadata (0 if the topic is not there)."""
+    meta = metadata.topics.get(topic)
+    return len(meta.partitions) if meta is not None and meta.partitions else 0
+
+
 def end_offsets_total(consumer, topic: str) -> int:
     """Sum of the high watermarks of every partition of `topic` (0 if it does not exist yet)."""
     from confluent_kafka import TopicPartition
@@ -267,6 +276,15 @@ def pid_alive(pid: int | None) -> bool:
     except OSError:
         return False
     return True
+
+
+def cmd_partitions(args) -> int:
+    consumer = make_consumer(args.bootstrap)
+    try:
+        print(partition_count(consumer.list_topics(args.topic, timeout=10), args.topic), flush=True)
+    finally:
+        consumer.close()
+    return 0
 
 
 def cmd_wait_written(args) -> int:
@@ -335,6 +353,9 @@ def cmd_watch(args) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    pc = sub.add_parser("partitions", help="print the topic's partition count")
+    pc.add_argument("--bootstrap", required=True)
+    pc.add_argument("--topic", required=True)
     w = sub.add_parser("wait-written", help="wait until the topic holds --expect records")
     w.add_argument("--bootstrap", required=True)
     w.add_argument("--topic", required=True)
@@ -352,7 +373,7 @@ def main(argv=None) -> int:
     v.add_argument("--timeout", type=float, default=3600.0)
     v.add_argument("--meta", nargs="*", default=[], help="key=value pairs stored in the result")
     args = ap.parse_args(argv)
-    return cmd_wait_written(args) if args.cmd == "wait-written" else cmd_watch(args)
+    return {"partitions": cmd_partitions, "wait-written": cmd_wait_written, "watch": cmd_watch}[args.cmd](args)
 
 
 if __name__ == "__main__":

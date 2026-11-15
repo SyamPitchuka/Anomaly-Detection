@@ -104,7 +104,8 @@ def test_parse_meta():
 def test_build_and_write_result(tmp_path):
     t = D.ExecutorTracker()
     t.add([{"id": "0", "totalCores": 2}, {"id": "1", "totalCores": 2}])
-    meta = D.parse_meta(["executors=2", "cores=2", "max_offsets_per_trigger=100", "replicate=", "shuffle_partitions=16"])
+    meta = D.parse_meta(["executors=2", "cores=2", "max_offsets_per_trigger=100", "replicate=",
+                         "topic_partitions=32", "shuffle_partitions=8"])
     r1 = D.build_result("NaN_run", "drained", meta, 300, BATCHES, TOPIC, t, 30.0)
     assert r1["total_cores"] == 4 and r1["consumed"] == 300 and r1["executors_seen"] == 2
     assert [b["offset"] for b in r1["batches_detail"]] == [100, 200, 300, 300]
@@ -122,7 +123,16 @@ def test_build_and_write_result(tmp_path):
     assert [r["run_id"] for r in rows] == ["NaN_run", "run2"]            # header written once
     assert list(rows[0]) == D.CSV_FIELDS
     assert rows[0]["drain_s"] == "9.0" and rows[0]["batches"] == "3" and rows[0]["replicate"] == ""
+    assert rows[0]["topic_partitions"] == "32" and rows[0]["shuffle_partitions"] == "8"
+    assert saved["topic_partitions"] == 32 and saved["shuffle_partitions"] == 8
     assert rows[1]["status"] == "timeout" and rows[1]["drain_s"] == "" and rows[1]["executors_seen"] == ""
+
+
+def test_partition_count():
+    from types import SimpleNamespace as NS
+    meta = NS(topics={TOPIC: NS(partitions={i: object() for i in range(32)}), "empty": NS(partitions={})})
+    assert D.partition_count(meta, TOPIC) == 32
+    assert D.partition_count(meta, "empty") == 0 and D.partition_count(meta, "missing") == 0
 
 
 # ---- shell scripts (bash only; lib.sh reads cluster.env.example) -----------------------------------------
@@ -142,9 +152,28 @@ def test_drain_test_help_and_bad_options():
     r = _bash(["drain_test.sh", "--help"])
     assert r.returncode == 0 and "backlog" in r.stdout and "--max-offsets-per-trigger" in r.stdout
     for bad, msg in ((["-n", "0"], "RECORDS"), (["-m", "abc"], "MAX_OFFSETS"), (["-e", "x"], "EXECUTORS"),
-                     (["-r", "0"], "--replicate"), (["--bogus"], "unknown option")):
+                     (["-r", "0"], "--replicate"), (["-P", "0"], "TOPIC_PARTITIONS"),
+                     (["-p", "x"], "SHUFFLE"), (["--bogus"], "unknown option")):
         r = _bash(["drain_test.sh", *bad])
         assert r.returncode != 0 and msg in r.stderr, (bad, r.stderr)
+
+
+def _config(*args):
+    r = _bash(["drain_test.sh", "--print-config", *args])
+    assert r.returncode == 0, r.stderr
+    return dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line)
+
+
+@needs_bash
+def test_drain_test_defaults_shuffle_to_twice_the_cores_and_32_topic_partitions():
+    cfg = _config("-e", "4", "-c", "2")
+    assert cfg["shuffle_partitions"] == "16" and cfg["topic_partitions"] == "32" and cfg["replicate"] == ""
+    cfg = _config("-e", "3", "-c", "2", "-r", "4")
+    assert cfg["shuffle_partitions"] == "12" and cfg["replicate"] == "4"
+    cfg = _config("-e", "1", "-c", "2", "-p", "40", "-P", "16")
+    assert cfg["shuffle_partitions"] == "40" and cfg["topic_partitions"] == "16"
+    cfg = _config()                                    # cluster.env.example: 2 workers x 1 executor x 2 cores
+    assert (cfg["executors"], cfg["cores"], cfg["shuffle_partitions"]) == ("2", "2", "8")
 
 
 @needs_bash

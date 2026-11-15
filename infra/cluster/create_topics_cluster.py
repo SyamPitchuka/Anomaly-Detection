@@ -6,6 +6,11 @@ Run from the repo root (venv active, brokers reachable by name):
     python infra/cluster/create_topics_cluster.py --bootstrap spark-master:9092,spark-master:9192,spark-master:9292
 
     python infra/cluster/create_topics_cluster.py --recreate telemetry.smd     # drop its data first (soak test)
+    python infra/cluster/create_topics_cluster.py --recreate telemetry.smd --partitions telemetry.smd=32   # E2 drain test
+
+--partitions TOPIC=P (repeatable) creates and verifies TOPIC with P partitions instead of partitions_cluster from
+contracts/topics.yaml (which is not edited). Experiments only: an existing topic with another count is still WRONG,
+so combine it with --recreate.
 
 Safe to run again: existing topics are never altered, only verified. A topic that exists with a
 different partition count or replication factor is reported as WRONG and the script exits 1
@@ -55,6 +60,22 @@ def describe(meta, name: str) -> tuple[int, int, int]:
     return parts, rf, leaderless
 
 
+def parse_partitions(pairs: list[str], known) -> dict[str, int]:
+    """['telemetry.smd=32'] -> {'telemetry.smd': 32}; the topic must be one of `known`, P >= 1."""
+    out = {}
+    for pair in pairs:
+        name, sep, value = pair.partition("=")
+        if not sep or name not in known or not value.isdigit() or int(value) < 1:
+            raise ValueError(f"--partitions wants TOPIC=P with TOPIC one of {sorted(known)} and P >= 1, got {pair!r}")
+        out[name] = int(value)
+    return out
+
+
+def want_partitions(topics_cfg: dict, overrides: dict[str, int]) -> dict[str, int]:
+    """Partition count per topic: the override if given, else partitions_cluster."""
+    return {name: overrides.get(name, t["partitions_cluster"]) for name, t in topics_cfg.items()}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--bootstrap", default=None, help="comma-separated broker list")
@@ -62,11 +83,17 @@ def main(argv: list[str] | None = None) -> int:
                     help="number of brokers in the cluster (default: KAFKA_BROKER_COUNT from cluster.runtime.env, else 3)")
     ap.add_argument("--recreate", action="append", default=[], metavar="TOPIC",
                     help="delete this topic (and its data) before creating the topics; repeatable")
+    ap.add_argument("--partitions", action="append", default=[], metavar="TOPIC=P",
+                    help="create/verify TOPIC with P partitions instead of partitions_cluster; repeatable")
     args = ap.parse_args(argv)
     bootstrap = resolve_bootstrap(args.bootstrap)
     status = 0
 
     cfg = yaml.safe_load((ROOT / "contracts" / "topics.yaml").read_text(encoding="utf-8"))
+    try:
+        want_parts = want_partitions(cfg["topics"], parse_partitions(args.partitions, cfg["topics"]))
+    except ValueError as e:
+        ap.error(str(e))
     n_brokers = args.brokers if args.brokers and args.brokers >= 1 else broker_count(load_runtime_env(), 3)
     want_rf = {name: effective_replication(t["replication_cluster"], n_brokers) for name, t in cfg["topics"].items()}
     admin = AdminClient({"bootstrap.servers": bootstrap})
@@ -83,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if status == 0:
         new = [
-            NewTopic(name, num_partitions=t["partitions_cluster"], replication_factor=want_rf[name])
+            NewTopic(name, num_partitions=want_parts[name], replication_factor=want_rf[name])
             for name, t in cfg["topics"].items() if name not in meta.topics
         ]
         for name, fut in (admin.create_topics(new).items() if new else []):
@@ -101,10 +128,10 @@ def main(argv: list[str] | None = None) -> int:
             if all(describe(meta, n)[2] == 0 and describe(meta, n)[0] > 0 for n in cfg["topics"]) or time.time() > deadline:
                 break
             time.sleep(1)
-        for name, t in cfg["topics"].items():
+        for name in cfg["topics"]:
             parts, rf, leaderless = describe(meta, name)
-            ok = parts == t["partitions_cluster"] and rf == want_rf[name] and leaderless == 0
-            print(f"{name}: {parts} partitions (want {t['partitions_cluster']}), "
+            ok = parts == want_parts[name] and rf == want_rf[name] and leaderless == 0
+            print(f"{name}: {parts} partitions (want {want_parts[name]}), "
                   f"replication {rf} (want {want_rf[name]}), {leaderless} without leader "
                   f"[{'ok' if ok else 'WRONG'}]")
             if not ok:

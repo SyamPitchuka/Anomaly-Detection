@@ -9,7 +9,10 @@
 #
 #   -e, --executors N      executors for score_job (default: all the cluster can hold)   } passed to submit.sh
 #   -c, --cores N          cores per executor (default: profile value)                   }
-#   -p, --shuffle-partitions N  spark.sql.shuffle.partitions (default 16, as submit.sh)
+#   -p, --shuffle-partitions N  spark.sql.shuffle.partitions (default 2 x executors x cores, so every core gets
+#                          two stateful tasks per batch whatever the config)
+#   -P, --topic-partitions P  partitions of the recreated telemetry.smd (default 32; contracts/topics.yaml keeps 8 for
+#                          the pipeline). The Kafka read stage runs one task per partition, so 8 would cap it at 8 cores
 #   -n, --records N        backlog size (default 2000000). More than one pass of the data set is sent as
 #                          several passes, each shifted in event time (see Looping)
 #   -m, --max-offsets-per-trigger N  records per micro-batch (default 200000), so the drain is many equal batches
@@ -19,11 +22,13 @@
 #       --run-id ID        name of the result (default e<E>c<C>_<UTC timestamp>)
 #   -o, --out DIR          result directory (default $REPO_DIR/data/scaling)
 #       --ui URL           driver Spark UI for the executor count (default $SPARK_UI_URL or http://localhost:4040)
-#       --keep-topic      do not recreate the topic or replay: drain what is already there (a re-run of the
-#                          same backlog). score_job still runs with --reset
+#       --keep-topic       do not recreate the topic or replay: drain what is already there (a re-run of the
+#                          same backlog). score_job still runs with --reset; the topic must still have P partitions
+#       --print-config     print the resolved settings (key=value) and exit, touching nothing (used by the tests)
 #
 # Steps
-#   (a) recreate telemetry.smd (create_topics_cluster.py --recreate) so the backlog is exactly N records;
+#   (a) recreate telemetry.smd with P partitions (create_topics_cluster.py --recreate --partitions telemetry.smd=P)
+#       so the backlog is exactly N records, then check that the broker reports P partitions (else stop);
 #   (b) replay N records at max speed (replay.py --speedup 0 --limit), score_job not running, and wait until the
 #       broker's end offsets total N (drain_monitor.py wait-written);
 #   (c) start score_job via submit.sh -e E -c C -m <maxOffsetsPerTrigger> -- --reset --trigger '0 seconds';
@@ -49,7 +54,9 @@ KEEP_TOPIC=0
 UI_URL="${SPARK_UI_URL:-http://localhost:4040}"
 EXECUTORS=""
 CORES=""
-SHUFFLE=16
+SHUFFLE=""
+TOPIC_PARTITIONS=32
+PRINT_CONFIG=0
 LOOP_GAP_S=3600
 JOB_ARGS=()
 
@@ -58,6 +65,8 @@ while [[ $# -gt 0 ]]; do
         -e|--executors)          EXECUTORS="${2:?--executors needs a value}"; shift 2 ;;
         -c|--cores)              CORES="${2:?--cores needs a value}"; shift 2 ;;
         -p|--shuffle-partitions) SHUFFLE="${2:?--shuffle-partitions needs a value}"; shift 2 ;;
+        -P|--topic-partitions)   TOPIC_PARTITIONS="${2:?--topic-partitions needs a value}"; shift 2 ;;
+        --print-config)          PRINT_CONFIG=1; shift ;;
         -n|--records)            RECORDS="${2:?--records needs a value}"; shift 2 ;;
         -m|--max-offsets-per-trigger) MAX_OFFSETS="${2:?--max-offsets-per-trigger needs a value}"; shift 2 ;;
         -r|--replicate)          REPLICATE="${2:?--replicate needs a value}"; shift 2 ;;
@@ -74,10 +83,20 @@ while [[ $# -gt 0 ]]; do
 done
 EXECUTORS="${EXECUTORS:-$((SPARK_WORKER_COUNT * EXECUTORS_PER_WORKER))}"
 CORES="${CORES:-${SPARK_EXECUTOR_CORES}}"
-for v in EXECUTORS CORES SHUFFLE RECORDS MAX_OFFSETS TIMEOUT_S; do
+for v in EXECUTORS CORES; do
+    [[ "${!v}" =~ ^[1-9][0-9]*$ ]] || die "${v} must be a positive integer, got '${!v}'"
+done
+SHUFFLE="${SHUFFLE:-$((2 * EXECUTORS * CORES))}"
+for v in SHUFFLE TOPIC_PARTITIONS RECORDS MAX_OFFSETS TIMEOUT_S; do
     [[ "${!v}" =~ ^[1-9][0-9]*$ ]] || die "${v} must be a positive integer, got '${!v}'"
 done
 [[ -z "${REPLICATE}" || "${REPLICATE}" =~ ^[1-9][0-9]*$ ]] || die "--replicate must be a positive integer"
+if [[ "${PRINT_CONFIG}" -eq 1 ]]; then
+    printf '%s\n' "executors=${EXECUTORS}" "cores=${CORES}" "shuffle_partitions=${SHUFFLE}" \
+        "topic_partitions=${TOPIC_PARTITIONS}" "records=${RECORDS}" "max_offsets_per_trigger=${MAX_OFFSETS}" \
+        "replicate=${REPLICATE}"
+    exit 0
+fi
 
 PY="${VENV_DIR}/bin/python"
 [[ "$(hostname -s)" == "${SPARK_MASTER_HOST%%.*}" ]] || die "run this on ${SPARK_MASTER_HOST}"
@@ -96,7 +115,7 @@ PROGRESS="${REPO_DIR}/data/latency_stream/progress.jsonl"
 REPL_ARGS=()
 [[ -z "${REPLICATE}" ]] || REPL_ARGS=(--replicate "${REPLICATE}")
 
-log "drain ${RUN_ID}: ${RECORDS} records, ${EXECUTORS} executors x ${CORES} cores, maxOffsetsPerTrigger ${MAX_OFFSETS}, replicate ${REPLICATE:-none}, logs in ${LOGS}"
+log "drain ${RUN_ID}: ${RECORDS} records, ${EXECUTORS} executors x ${CORES} cores, ${TOPIC_PARTITIONS} topic partitions, ${SHUFFLE} shuffle partitions, maxOffsetsPerTrigger ${MAX_OFFSETS}, replicate ${REPLICATE:-none}, logs in ${LOGS}"
 
 JOB_PID=""
 cleanup() {
@@ -108,11 +127,20 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [[ "${KEEP_TOPIC}" -eq 0 ]]; then
-    # (a) empty topic
-    log "(a) recreating ${TOPIC}"
+    # (a) empty topic with TOPIC_PARTITIONS partitions
+    log "(a) recreating ${TOPIC} with ${TOPIC_PARTITIONS} partitions"
     "${PY}" "${CLUSTER_DIR}/create_topics_cluster.py" --bootstrap "${KAFKA_BOOTSTRAP}" --recreate "${TOPIC}" \
+        --partitions "${TOPIC}=${TOPIC_PARTITIONS}" \
         > "${LOGS}/topics.log" 2>&1 || { cat "${LOGS}/topics.log" >&2; die "could not recreate ${TOPIC}"; }
+fi
+# the broker must really hold TOPIC_PARTITIONS partitions (also with --keep-topic)
+got_parts="$("${PY}" "${CLUSTER_DIR}/drain_monitor.py" partitions --bootstrap "${KAFKA_BOOTSTRAP}" --topic "${TOPIC}")" \
+    || die "cannot read the partition count of ${TOPIC}"
+[[ "${got_parts}" == "${TOPIC_PARTITIONS}" ]] \
+    || die "${TOPIC} has ${got_parts} partitions, expected ${TOPIC_PARTITIONS}"
+log "    ${TOPIC}: ${got_parts} partitions"
 
+if [[ "${KEEP_TOPIC}" -eq 0 ]]; then
     # (b) backlog of exactly RECORDS records, job not running
     PASS="$("${PY}" src/producer/replay.py --source smd --print-count "${REPL_ARGS[@]}")"
     SPAN_S="$("${PY}" src/producer/replay.py --source smd --print-span)"
@@ -153,7 +181,7 @@ rc=0
     --progress "${PROGRESS}" --out "${OUT}" --run-id "${RUN_ID}" --job-pid "${JOB_PID}" --since-ms "${T0_MS}" \
     --timeout "${TIMEOUT_S}" --ui "${UI_URL}" \
     --meta "executors=${EXECUTORS}" "cores=${CORES}" "max_offsets_per_trigger=${MAX_OFFSETS}" \
-           "replicate=${REPLICATE}" "shuffle_partitions=${SHUFFLE}" "trigger=${TRIGGER_EVERY// /_}" \
+           "replicate=${REPLICATE}" "topic_partitions=${TOPIC_PARTITIONS}" "shuffle_partitions=${SHUFFLE}" "trigger=${TRIGGER_EVERY// /_}" \
     || rc=$?
 log "stopping score_job"
 cleanup
