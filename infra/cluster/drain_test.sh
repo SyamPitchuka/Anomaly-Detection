@@ -35,7 +35,10 @@
 #   (d) poll data/latency_stream/progress.jsonl until the consumer offset reaches the topic end
 #       (drain_monitor.py watch, which also polls the driver UI at localhost:4040 for the executors);
 #   (e) write <out>/<run-id>.json and append one row to <out>/drain_runs.csv: drain seconds, records/s, number of
-#       batches, mean / p95 batch duration, executors seen (definitions in drain_monitor.py), then stop score_job.
+#       batches, mean / p95 batch duration, executors seen (definitions in drain_monitor.py), then stop score_job:
+#       SIGINT to its process group, after 60 s SIGTERM, after 20 s more SIGKILL (job_group.py stop), then wait
+#       <= 60 s until the Spark master lists no active app. A run whose JSON says 'drained' exits 0 whatever
+#       happens on stop.
 #
 # Looping: when N is more than one pass of the data set (replay.py --print-count), pass k (0-based) is sent with
 # --time-offset k * (data span + 1 h), as in soak_test.sh, so no pass lies behind the watermark of the one before.
@@ -117,14 +120,24 @@ REPL_ARGS=()
 
 log "drain ${RUN_ID}: ${RECORDS} records, ${EXECUTORS} executors x ${CORES} cores, ${TOPIC_PARTITIONS} topic partitions, ${SHUFFLE} shuffle partitions, maxOffsetsPerTrigger ${MAX_OFFSETS}, replicate ${REPLICATE:-none}, logs in ${LOGS}"
 
-JOB_PID=""
-cleanup() {
-    if [[ -n "${JOB_PID}" ]] && kill -0 "${JOB_PID}" 2> /dev/null; then
-        kill -INT "${JOB_PID}" 2> /dev/null || true     # SIGINT: score_job stops its query, spark-submit exits
-        wait "${JOB_PID}" 2> /dev/null || true
-    fi
+# score_job runs in its own process group (job_group.py start: setsid, output only to score_job.log), so a Ctrl+C
+# in this terminal does not reach it and stopping it never depends on the caller's terminal or pipe.
+JOB_PID=""          # = the job's process group id
+MASTER_JSON="http://${SPARK_MASTER_HOST}:8080/json/"
+cleanup() {         # bounded: SIGINT 60 s -> SIGTERM 20 s -> SIGKILL, then <= 60 s for the master to drop the app
+    [[ -n "${JOB_PID}" ]] || return 0
+    local pgid="${JOB_PID}"
+    JOB_PID=""
+    trap '' INT TERM                                   # a second Ctrl+C must not abandon the job half-stopped
+    "${PY}" "${CLUSTER_DIR}/job_group.py" stop --pgid "${pgid}" --int-wait 60 --term-wait 20 --kill-wait 10 \
+        || warn "score_job (process group ${pgid}) could not be stopped; kill it by hand: kill -KILL -- -${pgid}"
+    "${PY}" "${CLUSTER_DIR}/job_group.py" wait-apps --master "${MASTER_JSON}" --timeout 60 \
+        || warn "an application is still active on ${MASTER_JSON}; the next run may get no executors"
+    return 0
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT     # exit runs the EXIT trap (cleanup) once; without 'exit' the script would carry on
+trap 'exit 143' TERM
 
 if [[ "${KEEP_TOPIC}" -eq 0 ]]; then
     # (a) empty topic with TOPIC_PARTITIONS partitions
@@ -169,10 +182,11 @@ fi
 rm -f "${PROGRESS}"
 T0_MS="$(date +%s%3N)"
 log "(c) submitting score_job"
-bash "${CLUSTER_DIR}/submit.sh" --executors "${EXECUTORS}" --cores "${CORES}" --shuffle-partitions "${SHUFFLE}" \
+"${PY}" "${CLUSTER_DIR}/job_group.py" start --log "${LOGS}/score_job.log" -- \
+    bash "${CLUSTER_DIR}/submit.sh" --executors "${EXECUTORS}" --cores "${CORES}" --shuffle-partitions "${SHUFFLE}" \
     --max-offsets-per-trigger "${MAX_OFFSETS}" -- --reset --trigger "${TRIGGER_EVERY}" "${JOB_ARGS[@]}" \
-    > "${LOGS}/score_job.log" 2>&1 &
-JOB_PID=$!
+    < /dev/null > /dev/null 2>&1 &
+JOB_PID=$!          # job_group.py setsid-s and execs in place: this pid is the process group id of the whole job
 
 # (d) + (e) wait for the drain, write the JSON and the CSV row
 log "(d) watching ${PROGRESS} (job pid ${JOB_PID}, log ${LOGS}/score_job.log)"
@@ -184,8 +198,9 @@ rc=0
            "replicate=${REPLICATE}" "topic_partitions=${TOPIC_PARTITIONS}" "shuffle_partitions=${SHUFFLE}" "trigger=${TRIGGER_EVERY// /_}" \
     || rc=$?
 log "stopping score_job"
-cleanup
-JOB_PID=""
+cleanup             # never fails, never blocks for more than ~150 s
+# The watch above wrote the result JSON: a drained run (rc 0) stays a success even if score_job dies messily on
+# stop (Py4J errors at the end of score_job.log when the JVM goes down under the Python driver are harmless then).
 if [[ "${rc}" -ne 0 ]]; then
     tail -n 30 "${LOGS}/score_job.log" >&2
     die "drain ${RUN_ID} did not complete (see ${OUT}/${RUN_ID}.json and ${LOGS}/score_job.log)"
