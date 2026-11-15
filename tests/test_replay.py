@@ -231,5 +231,43 @@ def test_limit_reads_only_the_first_batches(tmp_path, monkeypatch):
     assert times == sorted(times) and times[-1] == "2026-01-01T00:07:00.000Z"
 
 
+def test_time_offset_shifts_event_times_but_not_pacing():
+    producer = MockProducer()
+    R.replay(producer, _raw_table(3), "smd", speedup=0, time_offset_us=3_600_000_000, out=lambda *a, **k: None)
+    times = [json.loads(m[2])["event_time"] for m in producer.messages]
+    assert times == ["2026-01-01T01:00:00.000Z", "2026-01-01T01:01:00.000Z", "2026-01-01T01:02:00.000Z"]
+
+    clock = {"t": 0.0}
+
+    def sleep(seconds):
+        clock["t"] += seconds
+
+    R.replay(MockProducer(), _raw_table(10), "smd", speedup=60, time_offset_us=10**12,
+             monotonic=lambda: clock["t"], sleep=sleep, out=lambda *a, **k: None)
+    assert clock["t"] == pytest.approx(9.0)       # same 9 s as without an offset
+
+
+def test_main_time_offset_option(tmp_path):
+    folder = tmp_path / "data/raw/source=smd"
+    folder.mkdir(parents=True)
+    pq.write_table(_raw_table(4), folder / "machine-1-1.parquet")
+    producer = MockProducer()
+    assert R.main(["--speedup", "0", "--time-offset", "86400", "--root", str(tmp_path)], producer=producer) == 0
+    times = [json.loads(m[2])["event_time"] for m in producer.messages]
+    assert times[0] == "2026-01-02T00:00:00.000Z" and times[-1] == "2026-01-02T00:03:00.000Z"
+
+
+def test_data_span_seconds_and_print_span(tmp_path, capsys):
+    folder = tmp_path / "data/raw/source=smd"
+    folder.mkdir(parents=True)
+    pq.write_table(_machine_table("machine-1-1", 10), folder / "machine-1-1.parquet")                 # minutes 0..9
+    pq.write_table(_machine_table("machine-2-1", 5, offset_min=20), folder / "machine-2-1.parquet")   # minutes 20..24
+    assert R.data_span_seconds(R.raw_files(tmp_path, "smd")) == 24 * 60
+    producer = MockProducer()
+    assert R.main(["--print-span", "--root", str(tmp_path)], producer=producer) == 0
+    assert capsys.readouterr().out.strip() == str(24 * 60)
+    assert producer.messages == []                  # nothing is sent
+
+
 def test_main_fails_without_raw_data(tmp_path):
     assert R.main(["--speedup", "0", "--root", str(tmp_path)], producer=MockProducer()) == 1

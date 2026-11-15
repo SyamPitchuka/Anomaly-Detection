@@ -5,6 +5,8 @@ Run from the repo root (venv active, brokers reachable by name):
     python infra/cluster/create_topics_cluster.py --bootstrap spark-master:9092
     python infra/cluster/create_topics_cluster.py --bootstrap spark-master:9092,spark-master:9192,spark-master:9292
 
+    python infra/cluster/create_topics_cluster.py --recreate telemetry.smd     # drop its data first (soak test)
+
 Safe to run again: existing topics are never altered, only verified. A topic that exists with a
 different partition count or replication factor is reported as WRONG and the script exits 1
 (Kafka cannot reduce partitions; delete and recreate the topic if you really want to change it).
@@ -26,6 +28,24 @@ from confluent_kafka.admin import AdminClient, NewTopic
 from cluster_common import ROOT, broker_count, effective_replication, load_runtime_env, resolve_bootstrap
 
 
+def delete_topics(admin, names: list[str], timeout_s: float = 60.0) -> bool:
+    """Delete the topics that exist and wait until the brokers no longer list them. True if all are gone."""
+    present = [n for n in names if n in admin.list_topics(timeout=15).topics]
+    for name, fut in (admin.delete_topics(present, operation_timeout=30).items() if present else []):
+        try:
+            fut.result()
+            print(f"deleted {name}")
+        except Exception as e:  # noqa: BLE001
+            print(f"FAIL deleting {name}: {e}")
+    deadline = time.time() + timeout_s
+    gone = False
+    while not gone and time.time() < deadline:
+        gone = not any(n in admin.list_topics(timeout=15).topics for n in names)
+        if not gone:
+            time.sleep(1)
+    return gone
+
+
 def describe(meta, name: str) -> tuple[int, int, int]:
     """(partitions, min replication factor over partitions, partitions without a leader)."""
     topic = meta.topics.get(name)
@@ -40,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bootstrap", default=None, help="comma-separated broker list")
     ap.add_argument("--brokers", type=int, default=None,
                     help="number of brokers in the cluster (default: KAFKA_BROKER_COUNT from cluster.runtime.env, else 3)")
+    ap.add_argument("--recreate", action="append", default=[], metavar="TOPIC",
+                    help="delete this topic (and its data) before creating the topics; repeatable")
     args = ap.parse_args(argv)
     bootstrap = resolve_bootstrap(args.bootstrap)
     status = 0
@@ -49,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
     want_rf = {name: effective_replication(t["replication_cluster"], n_brokers) for name, t in cfg["topics"].items()}
     admin = AdminClient({"bootstrap.servers": bootstrap})
     print(f"bootstrap: {bootstrap}")
+    if args.recreate and not delete_topics(admin, args.recreate):
+        print(f"FAIL {', '.join(args.recreate)} still listed after deletion")
+        status = 1
     meta = admin.list_topics(timeout=15)
     need_rf = max(want_rf.values())
     print(f"brokers visible: {len(meta.brokers)} (cluster has {n_brokers}; largest replication factor wanted is {need_rf})")

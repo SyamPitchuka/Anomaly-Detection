@@ -47,6 +47,41 @@ def _meta(partitions_by_topic):
     return SimpleNamespace(topics=topics)
 
 
+class _FakeAdmin:
+    """AdminClient stand-in: delete_topics removes the topics from list_topics()."""
+
+    def __init__(self, topics):
+        self.topics = set(topics)
+        self.deleted = []
+
+    def list_topics(self, timeout=None):
+        return SimpleNamespace(topics={t: object() for t in self.topics})
+
+    def delete_topics(self, names, operation_timeout=None):
+        futures = {}
+        for n in names:
+            self.deleted.append(n)
+            self.topics.discard(n)
+            fut = SimpleNamespace(result=lambda: None)
+            futures[n] = fut
+        return futures
+
+
+def test_delete_topics_only_deletes_existing_topics_and_waits_until_gone():
+    admin = _FakeAdmin({"telemetry.smd", "anomalies"})
+    assert create_topics_cluster.delete_topics(admin, ["telemetry.smd", "telemetry.alibaba"], timeout_s=2) is True
+    assert admin.deleted == ["telemetry.smd"]            # the missing topic is not deleted
+    assert admin.topics == {"anomalies"}
+
+
+def test_delete_topics_reports_a_topic_that_stays():
+    class Stuck(_FakeAdmin):
+        def delete_topics(self, names, operation_timeout=None):
+            return {n: SimpleNamespace(result=lambda: None) for n in names}    # broker ignores the request
+
+    assert create_topics_cluster.delete_topics(Stuck({"t"}), ["t"], timeout_s=0.1) is False
+
+
 def test_describe_counts_partitions_replication_and_leaderless():
     meta = _meta({"t": [(1, 3), (2, 3), (-1, 2)]})
     assert create_topics_cluster.describe(meta, "t") == (3, 2, 1)
