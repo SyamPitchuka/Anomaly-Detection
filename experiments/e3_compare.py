@@ -13,7 +13,7 @@ Definitions (key = (entity_id, window_start))
                          batch may publish its anomalies twice; consumers de-duplicate on the key (contract), so this
                          is reported but is not a failure. Lost / extra are computed after de-duplication.
     mismatch           : keys in both runs whose ae_score differs by more than 1e-6 or whose is_anomaly differs.
-PASS = no lost, no extra, no Parquet duplicates, no topic keys lost or extra.
+PASS = no lost, no extra, no Parquet duplicates, no value mismatch, no topic keys lost or extra.
 """
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def compare(clean: list[dict], fault: list[dict]) -> dict:
 
 def verdict(parquet: dict, topic: dict) -> bool:
     return (parquet["lost"] == 0 and parquet["extra"] == 0 and parquet["fault_duplicates"] == 0
-            and topic["lost"] == 0 and topic["extra"] == 0)
+            and parquet["mismatch"] == 0 and topic["lost"] == 0 and topic["extra"] == 0 and topic["mismatch"] == 0)
 
 
 # ---- Kafka / checkpoint --------------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def render(parquet: dict, topic: dict, timings: dict, ok: bool) -> str:
               f"consumers de-duplicate on the key). Clean run: {topic['clean_duplicates']}."]
     for k, v in timings.items():
         lines.append(f"- {k}: {v}")
-    lines += ["", f"**Result: {'PASS' if ok else 'FAIL'}** (lost 0, extra 0, Parquet duplicates 0)"]
+    lines += ["", f"**Result: {'PASS' if ok else 'FAIL'}** (lost 0, extra 0, Parquet duplicates 0, value mismatch 0)"]
     return "\n".join(lines)
 
 

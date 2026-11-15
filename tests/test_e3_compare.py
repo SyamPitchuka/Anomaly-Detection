@@ -83,3 +83,13 @@ def test_committed_offsets_use_newest_commit(tmp_path):
         (tmp_path / "offsets" / str(n)).write_text(f"v1\n{{}}\n{json.dumps({'t': {'0': 10 * (n + 1)}})}\n")
     (tmp_path / "commits" / "0").write_text("{}")          # batch 1 planned, not committed
     assert E.committed_end_offsets(tmp_path) == {"t": {"0": 10}}
+
+
+def test_value_mismatch_fails_the_verdict(tmp_path):
+    _write(tmp_path / "c", "batch-000000.parquet", [("m1", _ts(0), 0.1, False)])
+    _write(tmp_path / "f", "batch-000000.parquet", [("m1", _ts(0), 0.5, False)])   # same key, different score
+    _topic(tmp_path / "c.jsonl", [])
+    _topic(tmp_path / "f.jsonl", [])
+    p = E.compare(E.load_scores(tmp_path / "c"), E.load_scores(tmp_path / "f"))
+    t = E.compare(E.topic_rows(tmp_path / "c.jsonl"), E.topic_rows(tmp_path / "f.jsonl"))
+    assert p["mismatch"] == 1 and not E.verdict(p, t)
