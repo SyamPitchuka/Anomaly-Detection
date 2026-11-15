@@ -9,3 +9,5 @@ derby.log
 .DS_Store
 .ipynb_checkpoints/
 models/
+# E3 fault-tolerance run folders fetched from the cluster (experiments/e3_fetch.sh); already covered by data/
+data/e3/

@@ -332,4 +332,5 @@ rc=0
     --clean-topic "${OUT}/clean/anomalies.jsonl" --fault-topic "${OUT}/fault/anomalies.jsonl" \
     --timings "${TIMINGS}" --out-json "${OUT}/report.json" --out-md "${OUT}/report.md" || rc=$?
 log "report: ${OUT}/report.md"
+log "copy the run to your laptop (git-ignored data/e3/): E3_VM=<user>@<host> bash experiments/e3_fetch.sh ${OUT##*/}"
 exit "${rc}"
