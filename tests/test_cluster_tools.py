@@ -25,13 +25,21 @@ FULL_LAYOUT = (
 )
 
 
+# Variables lib.sh / cluster.env.example read from the environment that a CI runner or a corporate network may
+# already have set. They are removed from the subprocess env so the bash tests are hermetic; a test that needs
+# one passes it explicitly through _lib(**env). Compared case-insensitively (Windows env names are).
+_HOST_ENV_DROP = {"http_proxy", "https_proxy", "no_proxy", "all_proxy",
+                  "outbound_proxy_host", "outbound_proxy_port", "apt_proxy_conf"}
+
+
 def _lib(script, **env):
     settings = {"CLUSTER_ENV": "cluster.env.example", **env}
     exports = " ".join(f"{name}={shlex.quote(value)}" for name, value in settings.items())
+    clean_env = {k: v for k, v in os.environ.items() if k.lower() not in _HOST_ENV_DROP}
     return subprocess.run(
         ["bash"],
         input=f"export {exports}; {script}",
-        cwd=CLUSTER, capture_output=True, text=True, timeout=30, env=os.environ,
+        cwd=CLUSTER, capture_output=True, text=True, timeout=30, env=clean_env,
     )
 
 
