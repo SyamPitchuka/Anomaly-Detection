@@ -7,7 +7,8 @@ runs, exactly as run_job.py does, so score_job.py itself is not edited:
     CLUSTER_KAFKA_BOOTSTRAP   full broker list, e.g. spark-master:9092   -> contracts.schemas.KAFKA_BOOTSTRAP
     SCORE_CHECKPOINT_DIR      checkpoint directory on the shared storage -> score_job.CHECKPOINT_DIR
 
-Everything after the script name goes to score_job's own argument parser (--input, --max-seconds, ...).
+Everything after the script name goes to score_job's own argument parser (--input, --max-seconds,
+--max-offsets-per-trigger N, ...) unchanged; submit.sh -m N adds --max-offsets-per-trigger N.
 The Spark master is NOT set here: submit.sh passes --master <spark://...> to score_job, because score_job calls
 SparkSession.builder.master(args.master) (default local[*]) and that call would override spark-submit's --master.
 """

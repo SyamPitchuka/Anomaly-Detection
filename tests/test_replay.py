@@ -271,3 +271,50 @@ def test_data_span_seconds_and_print_span(tmp_path, capsys):
 
 def test_main_fails_without_raw_data(tmp_path):
     assert R.main(["--speedup", "0", "--root", str(tmp_path)], producer=MockProducer()) == 1
+
+
+def test_replicate_sends_k_renamed_copies_in_event_order():
+    producer = MockProducer()
+    sent = R.replay(producer, _raw_table(4), "smd", speedup=0, replicate=3, out=lambda *a, **k: None)
+    assert sent == 12
+    values = [json.loads(m[2]) for m in producer.messages]
+    assert [m[1] for m in producer.messages] == [v["entity_id"].encode() for v in values]   # key = renamed id
+    assert [v["entity_id"] for v in values[:3]] == ["machine-1-1-r1", "machine-1-1-r2", "machine-1-1-r3"]
+    assert {v["entity_id"] for v in values} == {f"machine-1-{m}-r{k}" for m in (1, 2) for k in (1, 2, 3)}
+    times = [v["event_time"] for v in values]
+    assert times == sorted(times)
+    for i in range(0, 12, 3):                         # the copies of one record differ only in entity_id
+        a, b, c = values[i:i + 3]
+        for v in (b, c):
+            assert {k: v[k] for k in ("event_time", "metrics", "label")} == \
+                   {k: a[k] for k in ("event_time", "metrics", "label")}
+            assert v["attrs"]["split"] == a["attrs"]["split"]
+
+
+def test_replicate_limit_counts_copies_and_default_keeps_names():
+    producer = MockProducer()
+    assert R.replay(producer, _raw_table(10), "smd", speedup=0, limit=5, replicate=2, out=lambda *a, **k: None) == 5
+    assert [json.loads(m[2])["entity_id"] for m in producer.messages] == \
+        ["machine-1-1-r1", "machine-1-1-r2", "machine-1-2-r1", "machine-1-2-r2", "machine-1-1-r1"]
+    plain = MockProducer()
+    R.replay(plain, _raw_table(2), "smd", speedup=0, out=lambda *a, **k: None)
+    assert [json.loads(m[2])["entity_id"] for m in plain.messages] == ["machine-1-1", "machine-1-2"]
+    with pytest.raises(ValueError):
+        list(R.replicate_records(iter([]), 0))
+
+
+def test_main_replicate_and_print_count(tmp_path, capsys):
+    folder = tmp_path / "data/raw/source=smd"
+    _write_machines(folder)                           # 60 + 30 + 40 rows
+    root = ["--root", str(tmp_path)]
+    assert R.main(["--print-count", *root], producer=MockProducer()) == 0
+    assert R.main(["--print-count", "--replicate", "3", *root], producer=MockProducer()) == 0
+    assert R.main(["--print-count", "--replicate", "3", "--limit", "100", *root], producer=MockProducer()) == 0
+    assert capsys.readouterr().out.split() == ["130", "390", "100"]
+    producer = MockProducer()
+    assert R.main(["--speedup", "0", "--replicate", "2", *root], producer=producer) == 0
+    assert len(producer.messages) == 260
+    ids = {json.loads(m[2])["entity_id"] for m in producer.messages}
+    assert ids == {f"{m}-r{k}" for m in ("machine-1-1", "machine-1-2", "machine-2-1") for k in (1, 2)}
+    with pytest.raises(SystemExit):
+        R.main(["--replicate", "0", *root], producer=MockProducer())

@@ -54,10 +54,14 @@ def build_spark(app_name: str = "features_job", with_kafka: bool = True, master:
     return builder.getOrCreate()
 
 
-def read_telemetry(spark: SparkSession) -> DataFrame:
-    """Kafka telemetry.smd parsed with the frozen schema, event_time as timestamp, 10-minute watermark."""
-    df = (spark.readStream.format("kafka").option("kafka.bootstrap.servers", S.KAFKA_BOOTSTRAP)
-          .option("subscribe", S.TOPIC_SMD).option("startingOffsets", "earliest").load())
+def read_telemetry(spark: SparkSession, max_offsets_per_trigger: int | None = None) -> DataFrame:
+    """Kafka telemetry.smd parsed with the frozen schema, event_time as timestamp, 10-minute watermark.
+    max_offsets_per_trigger (default None = no limit) caps the records read per micro-batch."""
+    reader = (spark.readStream.format("kafka").option("kafka.bootstrap.servers", S.KAFKA_BOOTSTRAP)
+              .option("subscribe", S.TOPIC_SMD).option("startingOffsets", "earliest"))
+    if max_offsets_per_trigger is not None:
+        reader = reader.option("maxOffsetsPerTrigger", int(max_offsets_per_trigger))
+    df = reader.load()
     return (df.select(F.from_json(F.col("value").cast("string"), S.TELEMETRY_JSON_DDL).alias("r"))
             .select("r.*")
             .withColumn("event_time", F.to_timestamp("event_time", "yyyy-MM-dd'T'HH:mm:ss.SSSX"))

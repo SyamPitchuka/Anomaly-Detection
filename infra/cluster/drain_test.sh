@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# E2 strong scaling, "backlog drain": put N records in telemetry.smd with score_job NOT running, then start
+# score_job on E executors x C cores and time how long it takes to consume the whole backlog.
+#
+# Run ON THE SPARK MASTER VM as the 'spark' user, with the topics created and data/raw/source=smd present:
+#     sudo -u spark bash infra/cluster/drain_test.sh -e 2 -c 2
+#     sudo -u spark bash infra/cluster/drain_test.sh -e 4 -c 2 -n 5000000 -m 200000 --run-id e4c2_rep1
+#     sudo -u spark bash infra/cluster/drain_test.sh -e 4 -c 2 -r 4 -- --tier1 v1     # after -- : score_job options
+#
+#   -e, --executors N      executors for score_job (default: all the cluster can hold)   } passed to submit.sh
+#   -c, --cores N          cores per executor (default: profile value)                   }
+#   -p, --shuffle-partitions N  spark.sql.shuffle.partitions (default 16, as submit.sh)
+#   -n, --records N        backlog size (default 2000000). More than one pass of the data set is sent as
+#                          several passes, each shifted in event time (see Looping)
+#   -m, --max-offsets-per-trigger N  records per micro-batch (default 200000), so the drain is many equal batches
+#   -r, --replicate K      weak scaling: replay.py --replicate K (K renamed copies of every machine)
+#   -t, --trigger T        score_job processing-time trigger (default '0 seconds': next batch as soon as one ends)
+#       --timeout S        give up after S seconds of draining (default 3600)
+#       --run-id ID        name of the result (default e<E>c<C>_<UTC timestamp>)
+#   -o, --out DIR          result directory (default $REPO_DIR/data/scaling)
+#       --ui URL           driver Spark UI for the executor count (default $SPARK_UI_URL or http://localhost:4040)
+#       --keep-topic      do not recreate the topic or replay: drain what is already there (a re-run of the
+#                          same backlog). score_job still runs with --reset
+#
+# Steps
+#   (a) recreate telemetry.smd (create_topics_cluster.py --recreate) so the backlog is exactly N records;
+#   (b) replay N records at max speed (replay.py --speedup 0 --limit), score_job not running, and wait until the
+#       broker's end offsets total N (drain_monitor.py wait-written);
+#   (c) start score_job via submit.sh -e E -c C -m <maxOffsetsPerTrigger> -- --reset --trigger '0 seconds';
+#   (d) poll data/latency_stream/progress.jsonl until the consumer offset reaches the topic end
+#       (drain_monitor.py watch, which also polls the driver UI at localhost:4040 for the executors);
+#   (e) write <out>/<run-id>.json and append one row to <out>/drain_runs.csv: drain seconds, records/s, number of
+#       batches, mean / p95 batch duration, executors seen (definitions in drain_monitor.py), then stop score_job.
+#
+# Looping: when N is more than one pass of the data set (replay.py --print-count), pass k (0-based) is sent with
+# --time-offset k * (data span + 1 h), as in soak_test.sh, so no pass lies behind the watermark of the one before.
+set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+RECORDS=2000000
+MAX_OFFSETS=200000
+REPLICATE=""
+TRIGGER_EVERY="0 seconds"
+TIMEOUT_S=3600
+RUN_ID=""
+OUT=""
+KEEP_TOPIC=0
+UI_URL="${SPARK_UI_URL:-http://localhost:4040}"
+EXECUTORS=""
+CORES=""
+SHUFFLE=16
+LOOP_GAP_S=3600
+JOB_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -e|--executors)          EXECUTORS="${2:?--executors needs a value}"; shift 2 ;;
+        -c|--cores)              CORES="${2:?--cores needs a value}"; shift 2 ;;
+        -p|--shuffle-partitions) SHUFFLE="${2:?--shuffle-partitions needs a value}"; shift 2 ;;
+        -n|--records)            RECORDS="${2:?--records needs a value}"; shift 2 ;;
+        -m|--max-offsets-per-trigger) MAX_OFFSETS="${2:?--max-offsets-per-trigger needs a value}"; shift 2 ;;
+        -r|--replicate)          REPLICATE="${2:?--replicate needs a value}"; shift 2 ;;
+        -t|--trigger)            TRIGGER_EVERY="${2:?--trigger needs a value}"; shift 2 ;;
+        --timeout)               TIMEOUT_S="${2:?--timeout needs a value}"; shift 2 ;;
+        --run-id)                RUN_ID="${2:?--run-id needs a value}"; shift 2 ;;
+        -o|--out)                OUT="${2:?--out needs a value}"; shift 2 ;;
+        --keep-topic)            KEEP_TOPIC=1; shift ;;
+        --ui)                    UI_URL="${2:?--ui needs a value}"; shift 2 ;;
+        -h|--help)               sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+        --)                      shift; JOB_ARGS=("$@"); break ;;
+        *)                       die "unknown option '$1' (pass score_job.py options after --)" ;;
+    esac
+done
+EXECUTORS="${EXECUTORS:-$((SPARK_WORKER_COUNT * EXECUTORS_PER_WORKER))}"
+CORES="${CORES:-${SPARK_EXECUTOR_CORES}}"
+for v in EXECUTORS CORES SHUFFLE RECORDS MAX_OFFSETS TIMEOUT_S; do
+    [[ "${!v}" =~ ^[1-9][0-9]*$ ]] || die "${v} must be a positive integer, got '${!v}'"
+done
+[[ -z "${REPLICATE}" || "${REPLICATE}" =~ ^[1-9][0-9]*$ ]] || die "--replicate must be a positive integer"
+
+PY="${VENV_DIR}/bin/python"
+[[ "$(hostname -s)" == "${SPARK_MASTER_HOST%%.*}" ]] || die "run this on ${SPARK_MASTER_HOST}"
+[[ -x "${PY}" ]] || die "${PY} not found; run 30_spark_node.sh"
+cd "${REPO_DIR}"
+compgen -G "${REPO_DIR}/data/raw/source=smd/*.parquet" > /dev/null || die "no raw data in ${REPO_DIR}/data/raw/source=smd"
+
+TOPIC="$("${PY}" -c "from contracts import schemas as S; print(S.TOPIC_SMD)")"
+RUN_ID="${RUN_ID:-e${EXECUTORS}c${CORES}_$(date -u +%Y%m%dT%H%M%SZ)}"
+OUT="${OUT:-${REPO_DIR}/data/scaling}"
+mkdir -p "${OUT}"
+OUT="$(cd "${OUT}" && pwd)"
+LOGS="${OUT}/logs/${RUN_ID}"
+mkdir -p "${LOGS}"
+PROGRESS="${REPO_DIR}/data/latency_stream/progress.jsonl"
+REPL_ARGS=()
+[[ -z "${REPLICATE}" ]] || REPL_ARGS=(--replicate "${REPLICATE}")
+
+log "drain ${RUN_ID}: ${RECORDS} records, ${EXECUTORS} executors x ${CORES} cores, maxOffsetsPerTrigger ${MAX_OFFSETS}, replicate ${REPLICATE:-none}, logs in ${LOGS}"
+
+JOB_PID=""
+cleanup() {
+    if [[ -n "${JOB_PID}" ]] && kill -0 "${JOB_PID}" 2> /dev/null; then
+        kill -INT "${JOB_PID}" 2> /dev/null || true     # SIGINT: score_job stops its query, spark-submit exits
+        wait "${JOB_PID}" 2> /dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+if [[ "${KEEP_TOPIC}" -eq 0 ]]; then
+    # (a) empty topic
+    log "(a) recreating ${TOPIC}"
+    "${PY}" "${CLUSTER_DIR}/create_topics_cluster.py" --bootstrap "${KAFKA_BOOTSTRAP}" --recreate "${TOPIC}" \
+        > "${LOGS}/topics.log" 2>&1 || { cat "${LOGS}/topics.log" >&2; die "could not recreate ${TOPIC}"; }
+
+    # (b) backlog of exactly RECORDS records, job not running
+    PASS="$("${PY}" src/producer/replay.py --source smd --print-count "${REPL_ARGS[@]}")"
+    SPAN_S="$("${PY}" src/producer/replay.py --source smd --print-span)"
+    [[ "${PASS}" =~ ^[1-9][0-9]*$ ]] || die "replay.py --print-count said '${PASS}'"
+    [[ "${SPAN_S}" =~ ^[0-9]+$ ]] || die "replay.py --print-span said '${SPAN_S}'"
+    passes=$(((RECORDS + PASS - 1) / PASS))
+    log "(b) replaying ${RECORDS} records at max speed: ${passes} pass(es) of up to ${PASS} (span ${SPAN_S} s)"
+    remaining="${RECORDS}"
+    : > "${LOGS}/replay.log"
+    for ((k = 0; remaining > 0; k++)); do
+        limit=$((remaining < PASS ? remaining : PASS))
+        offset_s=$((k * (SPAN_S + LOOP_GAP_S)))
+        log "    pass $((k + 1))/${passes}: ${limit} records, event times +${offset_s} s"
+        "${PY}" src/producer/replay.py --source smd --speedup 0 --limit "${limit}" --time-offset "${offset_s}" \
+            "${REPL_ARGS[@]}" --bootstrap "${KAFKA_BOOTSTRAP}" >> "${LOGS}/replay.log" 2>&1 \
+            || { tail -n 20 "${LOGS}/replay.log" >&2; die "replay pass $((k + 1)) failed"; }
+        remaining=$((remaining - limit))
+    done
+    "${PY}" "${CLUSTER_DIR}/drain_monitor.py" wait-written --bootstrap "${KAFKA_BOOTSTRAP}" --topic "${TOPIC}" \
+        --expect "${RECORDS}" --timeout 300 || die "the broker does not hold all ${RECORDS} records"
+else
+    warn "--keep-topic: draining whatever ${TOPIC} holds now"
+fi
+
+# (c) score_job on the cluster, from a clean checkpoint, as fast as it can
+rm -f "${PROGRESS}"
+T0_MS="$(date +%s%3N)"
+log "(c) submitting score_job"
+bash "${CLUSTER_DIR}/submit.sh" --executors "${EXECUTORS}" --cores "${CORES}" --shuffle-partitions "${SHUFFLE}" \
+    --max-offsets-per-trigger "${MAX_OFFSETS}" -- --reset --trigger "${TRIGGER_EVERY}" "${JOB_ARGS[@]}" \
+    > "${LOGS}/score_job.log" 2>&1 &
+JOB_PID=$!
+
+# (d) + (e) wait for the drain, write the JSON and the CSV row
+log "(d) watching ${PROGRESS} (job pid ${JOB_PID}, log ${LOGS}/score_job.log)"
+rc=0
+"${PY}" "${CLUSTER_DIR}/drain_monitor.py" watch --bootstrap "${KAFKA_BOOTSTRAP}" --topic "${TOPIC}" \
+    --progress "${PROGRESS}" --out "${OUT}" --run-id "${RUN_ID}" --job-pid "${JOB_PID}" --since-ms "${T0_MS}" \
+    --timeout "${TIMEOUT_S}" --ui "${UI_URL}" \
+    --meta "executors=${EXECUTORS}" "cores=${CORES}" "max_offsets_per_trigger=${MAX_OFFSETS}" \
+           "replicate=${REPLICATE}" "shuffle_partitions=${SHUFFLE}" "trigger=${TRIGGER_EVERY// /_}" \
+    || rc=$?
+log "stopping score_job"
+cleanup
+JOB_PID=""
+if [[ "${rc}" -ne 0 ]]; then
+    tail -n 30 "${LOGS}/score_job.log" >&2
+    die "drain ${RUN_ID} did not complete (see ${OUT}/${RUN_ID}.json and ${LOGS}/score_job.log)"
+fi
+log "drain done: ${OUT}/${RUN_ID}.json"

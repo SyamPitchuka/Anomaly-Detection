@@ -11,6 +11,8 @@
 #                            the query checkpoint is D/score/source=smd. Must be under $SHARED_DIR.
 #   -p, --shuffle-partitions N  spark.sql.shuffle.partitions (default 16). Keep it constant for the life of a
 #                            checkpoint: Spark fixes the state-store partition count when the query first starts.
+#   -m, --max-offsets-per-trigger N  at most N Kafka records per micro-batch (score_job --max-offsets-per-trigger,
+#                            Kafka source option maxOffsetsPerTrigger). Default: unset, no cap (as before).
 #       --skip-model-check   do not ssh to the workers to compare the model files
 #       --dry-run            print the configuration and the spark-submit command, run nothing
 #   --                       everything after it goes to score_job.py (--max-seconds, --reset, --tier1 v1, ...)
@@ -33,6 +35,7 @@ EXECUTORS="$((SPARK_WORKER_COUNT * EXECUTORS_PER_WORKER))"
 CORES="${SPARK_EXECUTOR_CORES}"
 CKPT_ROOT="${CHECKPOINT_DIR}"
 SHUFFLE_PARTITIONS=16
+MAX_OFFSETS=""
 MODEL_CHECK=1
 DRY_RUN=0
 JOB_ARGS=()
@@ -45,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         -c|--cores)              CORES="${2:?--cores needs a value}"; shift 2 ;;
         -k|--checkpoint-dir)     CKPT_ROOT="${2:?--checkpoint-dir needs a value}"; shift 2 ;;
         -p|--shuffle-partitions) SHUFFLE_PARTITIONS="${2:?--shuffle-partitions needs a value}"; shift 2 ;;
+        -m|--max-offsets-per-trigger) MAX_OFFSETS="${2:?--max-offsets-per-trigger needs a value}"; shift 2 ;;
         --skip-model-check)      MODEL_CHECK=0; shift ;;
         --dry-run)               DRY_RUN=1; shift ;;
         -h|--help)               usage; exit 0 ;;
@@ -56,6 +60,7 @@ done
 [[ "${EXECUTORS}" =~ ^[1-9][0-9]*$ ]] || die "--executors must be a positive integer, got '${EXECUTORS}'"
 [[ "${CORES}" =~ ^[1-9][0-9]*$ ]] || die "--cores must be a positive integer, got '${CORES}'"
 [[ "${SHUFFLE_PARTITIONS}" =~ ^[1-9][0-9]*$ ]] || die "--shuffle-partitions must be a positive integer"
+[[ -z "${MAX_OFFSETS}" || "${MAX_OFFSETS}" =~ ^[1-9][0-9]*$ ]] || die "--max-offsets-per-trigger must be a positive integer"
 
 # ---- can the workers hold E executors x C cores? --------------------------------------------
 PER_WORKER_CAP=$((SPARK_WORKER_CORES / CORES))
@@ -99,12 +104,14 @@ CMD=("${SUBMIT}"
      "${ENTRY}"
      --input kafka
      --master "${SPARK_MASTER_URL}"          # score_job's own --master (its default local[*] would override spark-submit's)
-     --shuffle-partitions "${SHUFFLE_PARTITIONS}"
-     "${JOB_ARGS[@]}")
+     --shuffle-partitions "${SHUFFLE_PARTITIONS}")
+[[ -z "${MAX_OFFSETS}" ]] || CMD+=(--max-offsets-per-trigger "${MAX_OFFSETS}")
+CMD+=("${JOB_ARGS[@]}")
 
 log "score_job: ${EXECUTORS} executors x ${CORES} cores = ${TOTAL_CORES} cores on ${SPARK_MASTER_URL}"
 log "  Kafka        ${KAFKA_BOOTSTRAP}   package ${KAFKA_PACKAGE}"
 log "  checkpoints  ${SCORE_CHECKPOINT_DIR}"
+log "  batch cap    ${MAX_OFFSETS:-none} (maxOffsetsPerTrigger)"
 log "  models       ${REPO_DIR}/models (shared mount, checked on ${SPARK_WORKER_COUNT} workers)"
 if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '  %q' "${CMD[@]}"; printf '\n'

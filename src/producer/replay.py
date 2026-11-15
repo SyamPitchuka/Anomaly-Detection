@@ -2,6 +2,7 @@
 
 Run from the repo root:
     python src/producer/replay.py --source smd [--speedup 100] [--limit N]
+    python src/producer/replay.py --speedup 0 --replicate 4      # weak scaling: 4 copies of every machine
 
 Reads data/raw/source=<source>/*.parquet (fake.parquet skipped next to real files), merges all machines
 by (event_time, entity_id) and sends every record to the contract topic of that source (key = entity_id, value = single-line JSON with the fields
@@ -13,6 +14,12 @@ used downstream to measure end-to-end latency.
 --time-offset SECONDS  add SECONDS to every event_time that is sent (default 0). Looping the same data set
              (the soak test) needs this: after the first pass the stream watermark is past the original event
              times, so score_job would drop a second pass as late. Pacing is unaffected (it uses differences).
+--replicate K  weak scaling: send K renamed copies of every machine, entity_id <machine>-r1 .. <machine>-rK
+             (same event times, metrics and labels), so the load grows K-fold. Default: the machines as they are.
+             --limit counts the copies (every copy is one record sent). score_job scores a replica with the
+             models of its original machine (score_job.model_entity).
+--print-count print the number of records one pass sends (raw rows x --replicate, cut to --limit) and exit;
+             read from the Parquet footers, so nothing is loaded.
 --print-span print the length of the data set in whole seconds (max - min event_time, rounded up) and exit
              without sending; a loop shifts by span + a gap so that pass N+1 starts after pass N ended.
 Prints records/s every 5 s.
@@ -232,17 +239,40 @@ def _wait_until(target, producer, reporter, monotonic, sleep) -> None:
         remaining = target - monotonic()
 
 
+def replicate_records(records, k: int):
+    """Each (event_us, entity_id, metrics, attrs, label) record -> k copies with entity_id <id>-r1 .. <id>-rk,
+    adjacent in the output (the stream stays in event_time order). k = 1 still renames (<id>-r1)."""
+    if k < 1:
+        raise ValueError(f"replicate must be >= 1, got {k}")
+    names: dict[str, tuple[str, ...]] = {}
+    for event_us, entity, metrics, attrs, label in records:
+        copies = names.get(entity)
+        if copies is None:
+            copies = names[entity] = tuple(f"{entity}-r{i}" for i in range(1, k + 1))
+        for name in copies:
+            yield event_us, name, metrics, attrs, label
+
+
+def record_count(files: list[Path], replicate: int | None = None, limit: int | None = None) -> int:
+    """Records one pass sends: rows of the files (Parquet footers only) x replicate, cut to limit."""
+    n = sum(pq.ParquetFile(f).metadata.num_rows for f in files) * (replicate or 1)
+    return n if limit is None else min(n, max(limit, 0))
+
+
 def replay(producer, records, source: str, speedup: float = 100.0, limit=None, *,
-           time_offset_us: int = 0, now=time.time, monotonic=time.monotonic, sleep=time.sleep, out=print) -> int:
+           time_offset_us: int = 0, replicate: int | None = None, now=time.time, monotonic=time.monotonic, sleep=time.sleep, out=print) -> int:
     """Send records to the source topic in event_time order; returns the number of records sent.
 
     records: an iterator of (event_us, entity_id, metric pairs, attr pairs, label) already in
     (event_time, entity_id) order, e.g. merged_records(raw_files(...)), or a pyarrow Table (sorted here).
     Only the first `limit` records are pulled from the iterator, so nothing beyond them is read.
-    time_offset_us is added to the event_time of every record sent (pacing uses the unshifted times)."""
+    time_offset_us is added to the event_time of every record sent (pacing uses the unshifted times).
+    replicate K sends K copies of each record as <entity_id>-r1 .. -rK (limit counts the copies)."""
     topic = TOPICS[source]
     if isinstance(records, pa.Table):
         records = table_records(records)
+    if replicate is not None:
+        records = replicate_records(records, replicate)
     if limit is not None:
         records = itertools.islice(records, max(limit, 0))
     stats = {"errors": 0}
@@ -291,11 +321,17 @@ def main(argv=None, producer=None) -> int:
     ap.add_argument("--limit", type=int, default=None, help="send only the first N records")
     ap.add_argument("--time-offset", type=float, default=0.0, metavar="SECONDS",
                     help="add SECONDS to every event_time sent (shifts a repeated pass past the watermark)")
+    ap.add_argument("--replicate", type=int, default=None, metavar="K",
+                    help="send K renamed copies of every machine (<id>-r1..-rK), for weak scaling")
+    ap.add_argument("--print-count", action="store_true",
+                    help="print the number of records one pass sends (with --replicate / --limit) and exit")
     ap.add_argument("--print-span", action="store_true",
                     help="print the data set's event-time span in whole seconds and exit")
     ap.add_argument("--root", type=Path, default=ROOT, help="repo root that contains data/raw")
     ap.add_argument("--bootstrap", default=S.KAFKA_BOOTSTRAP)
     args = ap.parse_args(argv)
+    if args.replicate is not None and args.replicate < 1:
+        ap.error("--replicate must be >= 1")
 
     code = 0
     try:
@@ -306,12 +342,14 @@ def main(argv=None, producer=None) -> int:
     else:
         if args.print_span:
             print(data_span_seconds(files))
+        elif args.print_count:
+            print(record_count(files, args.replicate, args.limit))
         else:
             if producer is None:
                 producer = make_producer(args.bootstrap)
             try:
                 replay(producer, merged_records(files), args.source, args.speedup, args.limit,
-                       time_offset_us=int(round(args.time_offset * 1_000_000)))
+                       time_offset_us=int(round(args.time_offset * 1_000_000)), replicate=args.replicate)
             except KeyboardInterrupt:
                 producer.flush(5)
                 print("interrupted", flush=True)

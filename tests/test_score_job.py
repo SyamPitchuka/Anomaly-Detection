@@ -182,3 +182,81 @@ def test_write_scores_file(setup, tmp_path):
     assert table.schema.names == list(S.LAYERS["scores"])
     assert all(S.type_matches(S.LAYERS["scores"][f.name], f.type) for f in table.schema)
     assert table.num_rows == len(test)
+
+
+def test_model_entity_maps_replicas_to_their_machine():
+    known = {"machine-1-1": 1, "machine-1-1-r2x": 1}
+    assert M.model_entity("machine-1-1", known) == "machine-1-1"
+    assert M.model_entity("machine-1-1-r1", known) == "machine-1-1"
+    assert M.model_entity("machine-1-1-r12", known) == "machine-1-1"
+    assert M.model_entity("machine-1-1-r2x", known) == "machine-1-1-r2x"     # known as it is
+    assert M.model_entity("machine-9-9-r1", known) == "machine-9-9-r1"       # base unknown too: unchanged
+    assert M.model_entity("machine-1-1-r0", known) == "machine-1-1-r0"       # replay numbers copies from 1
+    assert M.model_entity("machine-1-1-rx", known) == "machine-1-1-rx"
+
+
+def test_replica_is_scored_like_its_machine(setup):
+    """replay.py --replicate: machine-a-r2 gets machine-a's AE scores but keeps its own entity_id."""
+    raw, _, models = setup
+    rows = raw[raw["entity_id"] == MACHINES[0]].drop(columns="entity_id")
+    n_in = len(models["ae"]["feature_metrics"])
+    orig, _ = M.step(MACHINES[0], rows, M.new_state(n_in), models)
+    copy, _ = M.step(f"{MACHINES[0]}-r2", rows, M.new_state(n_in), models)
+    assert (copy["entity_id"] == f"{MACHINES[0]}-r2").all()
+    assert copy["ae_score"].notna().all()
+    np.testing.assert_allclose(copy["ae_score"], orig["ae_score"], rtol=0, atol=0)
+    assert copy["ae_flag"].tolist() == orig["ae_flag"].tolist()
+
+
+def test_max_offsets_per_trigger_reaches_the_kafka_source(monkeypatch, tmp_path):
+    """--max-offsets-per-trigger N -> read_telemetry(spark, N); unset -> None; < 1 is refused."""
+    from src.streaming import features_job
+
+    (tmp_path / "model.pt").write_bytes(b"")
+    monkeypatch.setattr(M, "AE_DIR", tmp_path)
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    class FakeSpark:
+        sparkContext = type("SC", (), {"setLogLevel": lambda self, level: None})()
+
+    def fake_read(spark, max_offsets_per_trigger=None):
+        seen.append(max_offsets_per_trigger)
+        raise Stop
+
+    monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: FakeSpark())
+    monkeypatch.setattr(features_job, "read_telemetry", fake_read)
+    for argv in (["--input", "kafka", "--max-offsets-per-trigger", "200000"], ["--input", "kafka"]):
+        with pytest.raises(Stop):
+            M.main(argv)
+    assert seen == [200000, None]
+    with pytest.raises(SystemExit):
+        M.main(["--max-offsets-per-trigger", "0"])
+
+
+def test_read_telemetry_sets_max_offsets_per_trigger_only_when_given():
+    from src.streaming import features_job
+
+    class Reader:
+        def __init__(self):
+            self.options = {}
+
+        def format(self, name):
+            return self
+
+        def option(self, key, value):
+            self.options[key] = value
+            return self
+
+        def load(self):
+            raise StopIteration(self.options)
+
+    for cap, want in ((None, None), (5000, 5000)):
+        reader = Reader()
+        spark = type("Spark", (), {"readStream": reader})()
+        with pytest.raises(StopIteration) as e:
+            features_job.read_telemetry(spark, cap)
+        assert e.value.args[0].get("maxOffsetsPerTrigger") == want
+        assert e.value.args[0]["subscribe"] == S.TOPIC_SMD and e.value.args[0]["startingOffsets"] == "earliest"
