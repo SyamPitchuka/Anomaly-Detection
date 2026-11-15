@@ -83,7 +83,10 @@ case "${CKPT_ROOT}/" in
 esac
 SCORE_CHECKPOINT_DIR="${CKPT_ROOT}/score/source=smd"
 
-ENTRY="${CLUSTER_DIR}/score_entry.py"
+# The driver must run the SHARED copy of the repo, like the executors (PYTHONPATH=$REPO_DIR): score_job.py resolves
+# data/, models/ and the progress log relative to its own file. Running ~/Anomaly-Detection/infra/cluster/submit.sh with
+# ENTRY under CLUSTER_DIR would write the stream output and progress.jsonl into the home copy, not the share.
+ENTRY="${REPO_DIR}/infra/cluster/score_entry.py"
 PY="${VENV_DIR}/bin/python"
 SUBMIT="${SPARK_HOME}/bin/spark-submit"
 
@@ -112,6 +115,7 @@ fi
 [[ "$(hostname -s)" == "${SPARK_MASTER_HOST%%.*}" ]] || die "run this on ${SPARK_MASTER_HOST} (the driver must be reachable from the executors)"
 [[ -x "${SUBMIT}" ]] || die "${SUBMIT} not found; run 30_spark_node.sh"
 [[ -x "${PY}" ]] || die "${PY} not found; run 30_spark_node.sh"
+[[ -f "${ENTRY}" ]] || die "${ENTRY} not found on the share; run deploy.sh repo"
 mountpoint -q "${SHARED_DIR}" || is_nfs_server || die "${SHARED_DIR} is not mounted"
 mkdir -p "${SCORE_CHECKPOINT_DIR}"
 [[ -w "${SCORE_CHECKPOINT_DIR}" ]] || die "${SCORE_CHECKPOINT_DIR} is not writable by $(id -un)"

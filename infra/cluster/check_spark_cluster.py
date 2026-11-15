@@ -90,10 +90,13 @@ rows = sc.parallelize(range(n_slots * 8), n_slots * 4).mapPartitions(probe).coll
 by_host = Counter(h for h, _, _ in rows)
 driver_py = "%d.%d" % sys.version_info[:2]
 
-# Executors come from the status tracker (host:port per executor). It lists the driver too, which is
-# dropped by its host name: the driver runs on the master VM and no worker runs there.
+# Executors come from the status tracker (host:port per executor). It lists the driver too, exactly once, so ONE
+# entry on the driver's host is dropped. (Not all of them: in the single-VM layout the only worker runs on the driver's VM.)
 driver_host = sc.getConf().get("spark.driver.host", socket.gethostname())
-exec_per_host = Counter(i.host() for i in sc._jsc.sc().statusTracker().getExecutorInfos() if i.host() != driver_host)
+exec_per_host = Counter(i.host() for i in sc._jsc.sc().statusTracker().getExecutorInfos())
+if exec_per_host[driver_host] > 0:
+    exec_per_host[driver_host] -= 1
+exec_per_host = +exec_per_host          # drop hosts left with 0
 n_executors = sum(exec_per_host.values())
 
 print(f"driver {driver_host}, python {driver_py}, master {master_url}")
