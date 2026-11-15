@@ -39,6 +39,8 @@
 # Caveat: both runs replay in real time, so micro-batch boundaries (and with them the event-time watermark when a batch
 # is cut) differ between runs. A row that is late in one run only would show up as lost/extra: if the report fails
 # check lost_sample first. The fault run's own duplicates are independent of that.
+# Stopping drivers uses pkill -f score_entry.py on the master and VM B, so it also stops anyone else's score_job there:
+# run this when nobody else is using the cluster (the run also wipes telemetry.smd, anomalies and the score checkpoint).
 # The new driver on VM B needs: Spark, the venv and the NFS share (same paths), the shared repo copy of submit.sh from
 # this branch (deploy.sh repo), and executors that resolve B's hostname.
 set -euo pipefail
@@ -144,6 +146,12 @@ stop_drivers() { # stop_drivers <signal>: signal every score_job driver process 
     done
 }
 cleanup() {
+    if [[ -n "${CTL_DIR:-}" ]]; then
+        for _w in "${SPARK_WORKER_HOSTS[@]}"; do
+            ssh -O exit -o ControlPath="${CTL_DIR}/${_w}" "${SSH_USER}@${_w}" 2> /dev/null || true
+        done
+        rm -rf "${CTL_DIR}"
+    fi
     [[ -z "${REPLAY_PID}" ]] || kill "${REPLAY_PID}" 2> /dev/null || true
     stop_drivers INT
     sleep 3
@@ -178,8 +186,10 @@ start_job_local() {
 start_job_on_b() { # start_job_on_b <log>: new driver on VM B, same checkpoint, no --reset
     local lg="$1" cmd
     cmd="cd $(printf %q "${REPO_DIR}") && ${EXTRA_ENV} CLUSTER_ENV=$(printf %q "${OUT}/cluster.env") SUBMIT_ANY_HOST=1 exec bash infra/cluster/submit.sh"
-    cmd+=" $(printf '%q ' "${SUBMIT_ARGS[@]}") --skip-model-check -m ${MAX_OFFSETS} -- --trigger $(printf %q "${TRIGGER_EVERY}")"
-    cmd+=" --max-seconds $((TIMEOUT_S * 4)) $(printf '%q ' "${JOB_ARGS[@]}")"
+    [[ ${#SUBMIT_ARGS[@]} -eq 0 ]] || cmd+=" $(printf '%q ' "${SUBMIT_ARGS[@]}")"     # an empty array would become ''
+    cmd+=" --skip-model-check -m ${MAX_OFFSETS} -- --trigger $(printf %q "${TRIGGER_EVERY}")"
+    cmd+=" --max-seconds $((TIMEOUT_S * 4))"
+    [[ ${#JOB_ARGS[@]} -eq 0 ]] || cmd+=" $(printf '%q ' "${JOB_ARGS[@]}")"
     rsh "${DRIVER_B}" "${cmd}" > "${lg}" 2>&1 &
     DRIVER_PID=$!
 }
@@ -205,8 +215,7 @@ snapshot() { # snapshot <dir>: scores output + anomalies topic after the job is 
     local d="$1"
     rm -rf "${d}"; mkdir -p "${d}"
     cp -r "${SCORES_DIR}" "${d}/scores"
-    "${PY}" experiments/e3_compare.py dump-topic --bootstrap "${KAFKA_BOOTSTRAP}" --topic "${ANOM_TOPIC}" --out "${d}/anomalies.jsonl" \
-        | xargs -I{} log "{} anomalies records in the topic" 2> /dev/null || true
+    "${PY}" experiments/e3_compare.py dump-topic --bootstrap "${KAFKA_BOOTSTRAP}" --topic "${ANOM_TOPIC}" --out "${d}/anomalies.jsonl" > /dev/null
     log "snapshot ${d}: $(ls "${d}/scores" | wc -l) score files, $(wc -l < "${d}/anomalies.jsonl") anomalies records"
 }
 
@@ -248,20 +257,39 @@ log "   warm-up done; waiting for test windows (Parquet files in ${SCORES_DIR}) 
 wait_for "test windows to reach the scores output" "${TIMEOUT_S}" scores_files_ge 3
 
 # --- executor kill, mid-batch
-wait_for "a batch in flight" 120 in_flight
-N1="$(last_offset)"
-EXEC_HOST=""; EXEC_PID=""
+# A new ssh connection costs about a second, as long as a batch, so every worker gets a persistent connection first and
+# the kill goes through it. A kill only counts if its batch had NOT committed when the kill returned; otherwise try again.
+CTL_DIR="$(mktemp -d)"
+ctl_ssh() { local h="$1"; shift; ssh -n "${SSH_OPTS[@]}" -o ControlPath="${CTL_DIR}/${h}" "${SSH_USER}@${h}" "$@"; }
 for w in "${SPARK_WORKER_HOSTS[@]}"; do
-    pid="$(rsh "${w}" "pgrep -f '[C]oarseGrainedExecutorBackend' | head -n 1" 2> /dev/null || true)"
-    [[ -z "${pid}" ]] || { EXEC_HOST="${w}"; EXEC_PID="${pid}"; break; }
+    ssh "${SSH_OPTS[@]}" -o ControlMaster=yes -o ControlPath="${CTL_DIR}/${w}" -o ControlPersist=3600 -fN "${SSH_USER}@${w}" \
+        || die "cannot open an ssh connection to ${w}"
 done
-[[ -n "${EXEC_PID}" ]] || die "no executor JVM found on ${SPARK_WORKER_HOSTS[*]}"
-T_EXEC="$(now_ms)"
-rsh "${EXEC_HOST}" "kill -9 ${EXEC_PID}"
-log "   killed executor pid ${EXEC_PID} on ${EXEC_HOST} while batch ${N1} was in flight (last commit $(last_commit))"
-wait_for "batch ${N1} to commit after the executor kill" "${TIMEOUT_S}" commits_ge "${N1}"
-EXEC_RECOVERY_MS=$(($(now_ms) - T_EXEC))
-log "   executor recovery: $(fmt_s "${EXEC_RECOVERY_MS}") (kill -> commit of batch ${N1})"
+EXEC_RECOVERY_MS=""; N1=""
+for attempt in 1 2 3 4 5 6; do
+    EXEC_HOST=""; EXEC_PID=""
+    for w in "${SPARK_WORKER_HOSTS[@]}"; do
+        pid="$(ctl_ssh "${w}" "pgrep -f '[C]oarseGrainedExecutorBackend' | head -n 1" 2> /dev/null || true)"
+        [[ -z "${pid}" ]] || { EXEC_HOST="${w}"; EXEC_PID="${pid}"; break; }
+    done
+    [[ -n "${EXEC_PID}" ]] || die "no executor JVM found on ${SPARK_WORKER_HOSTS[*]}"
+    wait_for "a batch in flight" 120 in_flight
+    N1="$(last_offset)"
+    T_EXEC="$(now_ms)"
+    ctl_ssh "${EXEC_HOST}" "kill -9 ${EXEC_PID}"
+    T_RET="$(now_ms)"
+    if (( $(last_commit) < N1 )); then
+        log "   killed executor pid ${EXEC_PID} on ${EXEC_HOST} while batch ${N1} was in flight (last commit $(last_commit), kill took $((T_RET - T_EXEC)) ms)"
+        wait_for "batch ${N1} to commit after the executor kill" "${TIMEOUT_S}" commits_ge "${N1}"
+        EXEC_RECOVERY_MS=$(($(now_ms) - T_EXEC))
+        log "   executor recovery: $(fmt_s "${EXEC_RECOVERY_MS}") (kill -> commit of batch ${N1})"
+        break
+    fi
+    log "   attempt ${attempt}: batch ${N1} had already committed when the kill returned; not a mid-batch kill, trying again"
+    wait_for "the replacement executor" 120 commits_ge "$((N1 + 1))"
+    sleep 5
+done
+[[ -n "${EXEC_RECOVERY_MS}" ]] || die "could not kill an executor while a batch was in flight in 6 attempts"
 
 # --- driver kill, mid-batch, restart on VM B
 wait_for "${GAP} more commits" "${TIMEOUT_S}" commits_ge "$((N1 + GAP))"
@@ -269,12 +297,13 @@ wait_for "a batch in flight" 120 in_flight
 N2="$(last_offset)"
 T_DRV="$(now_ms)"
 DRIVER_KILLED=1
-stop_drivers KILL
+pkill -KILL -f '[s]core_entry.py' || true          # the first driver runs on this VM: no ssh latency
+(( $(last_commit) < N2 )) || warn "batch ${N2} had already committed when the driver was killed: not a mid-batch kill (rerun)"
 log "   killed the driver on ${SPARK_MASTER_HOST} while batch ${N2} was in flight (last commit $(last_commit))"
 start_job_on_b "${OUT}/fault_score_job_B.log"
+DRIVER_KILLED=""          # DRIVER_PID is now the ssh to B: wait_for fails fast if the new driver dies (bad env, permissions)
 wait_for "'score_job started' on ${DRIVER_B}" 300 log_has "${OUT}/fault_score_job_B.log" "score_job started"
 DRV_START_MS=$(($(now_ms) - T_DRV))
-DRIVER_KILLED=""
 wait_for "batch ${N2} to commit on the new driver" "${TIMEOUT_S}" commits_ge "${N2}"
 DRV_RECOVERY_MS=$(($(now_ms) - T_DRV))
 log "   driver restart: started after $(fmt_s "${DRV_START_MS}"), batch ${N2} committed after $(fmt_s "${DRV_RECOVERY_MS}")"
