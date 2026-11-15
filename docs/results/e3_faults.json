@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "date": "2026-11-15",
+    "experiment": "E3 fault tolerance",
+    "run_id": "e3_full2",
+    "records_per_run": 1416825,
+    "speedup": 3000,
+    "max_offsets_per_trigger": 20000,
+    "trigger": "5 seconds",
+    "cluster": "Azure India South Central: spark-master (Kafka, NFS, first driver) + spark-w1..w5; 5 executors x 2 cores",
+    "executor_killed_on": "spark-w1",
+    "driver_killed_on": "spark-master",
+    "driver_restarted_on": "spark-w1",
+    "script": "experiments/e3_faults.sh (branch samritha/e3-faults)"
+  },
+  "recovery": {
+    "executor_kill_batch": 96,
+    "executor_recovery_s": 15.7,
+    "driver_kill_batch": 101,
+    "driver_restart_to_score_job_started_s": 27.3,
+    "driver_kill_to_batch_committed_s": 46.1
+  },
+  "parquet": {
+    "clean_rows": 141624,
+    "clean_distinct": 141624,
+    "fault_rows": 141624,
+    "fault_distinct": 141624,
+    "clean_duplicates": 0,
+    "fault_duplicates": 0,
+    "lost": 0,
+    "extra": 0,
+    "mismatch": 0,
+    "lost_sample": [],
+    "extra_sample": []
+  },
+  "topic": {
+    "clean_rows": 1158,
+    "clean_distinct": 1158,
+    "fault_rows": 1158,
+    "fault_distinct": 1158,
+    "clean_duplicates": 0,
+    "fault_duplicates": 0,
+    "lost": 0,
+    "extra": 0,
+    "mismatch": 0,
+    "lost_sample": [],
+    "extra_sample": []
+  },
+  "pass": true
+}
