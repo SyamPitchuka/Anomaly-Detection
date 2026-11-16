@@ -119,7 +119,9 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
 fi
 
 # ---- preflight --------------------------------------------------------------------------------
-[[ "$(hostname -s)" == "${SPARK_MASTER_HOST%%.*}" ]] || die "run this on ${SPARK_MASTER_HOST} (the driver must be reachable from the executors)"
+# SUBMIT_ANY_HOST=1 (experiments/e3_faults.sh: restart the driver on another VM) lets any Spark VM that has Spark, the venv and
+# the share mounted act as the driver host; executors must be able to resolve and reach that VM's hostname.
+[[ "${SUBMIT_ANY_HOST:-0}" == "1" || "$(hostname -s)" == "${SPARK_MASTER_HOST%%.*}" ]]     || die "run this on ${SPARK_MASTER_HOST} (the driver must be reachable from the executors; SUBMIT_ANY_HOST=1 overrides)"
 [[ -x "${SUBMIT}" ]] || die "${SUBMIT} not found; run 30_spark_node.sh"
 [[ -x "${PY}" ]] || die "${PY} not found; run 30_spark_node.sh"
 [[ -f "${ENTRY}" ]] || die "${ENTRY} not found on the share; run deploy.sh repo"
