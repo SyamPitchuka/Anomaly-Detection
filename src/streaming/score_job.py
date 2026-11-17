@@ -65,6 +65,16 @@ default unset = no cap, Spark reads everything available). infra/cluster/drain_t
 Stopping without Ctrl+C (for scripted runs): --max-seconds S stops the query after S wall seconds,
 --idle-stop S once rows were seen and no micro-batch had input rows for S seconds.
 
+Bottleneck experiments (E2; defaults leave the job unchanged):
+- --read-only: read and parse telemetry exactly as the scoring path does (telemetry_rows(): same Kafka source,
+  from_json, watermark and selected columns), then per micro-batch only persist() + count() in foreachBatch,
+  as the real write_batch does before scoring: no shuffle, no state, no scoring, no output files. The
+  progress / durationMs / foreachBatch-step lines and progress.jsonl are written as usual.
+- --checkpoint-dir PATH: query checkpoint directory instead of checkpoints/score/source=smd (--reset deletes it).
+- --state-store rocksdb: spark.sql.streaming.stateStore.providerClass = RocksDBStateStoreProvider with
+  changelog checkpointing on (default hdfs = Spark's HDFSBackedStateStoreProvider). The provider is fixed in
+  the checkpoint when a query first starts, so switch it only on a fresh checkpoint (--reset).
+
 Diagnostics: each batch line is followed by the batch's durationMs and the time of each foreachBatch step.
 With SCORE_JOB_WORKER_LOG=<file>, every process that imports this module (driver and Python workers)
 appends JSON lines: module_import (import time, process age), load_models (seconds) and one score_group
@@ -432,6 +442,16 @@ def read_files(spark, machines: int | None, files_per_trigger: int = 1):
             .parquet(raw_dir.as_posix()).withWatermark("event_time", WATERMARK)), [p.stem for p in files]
 
 
+def telemetry_rows(telemetry):
+    """telemetry (entity_id, event_time watermarked, metrics, attrs, label) -> the rows handed to the stateful
+    function: entity_id, event_us, m00..m37, split, label, ingest_ms. Shared by build_scores and --read-only."""
+    from pyspark.sql import functions as F
+    return telemetry.select("entity_id", F.expr("unix_micros(event_time)").alias("event_us"),
+                            *[F.col("metrics")[m].alias(m) for m in METRICS],
+                            F.col("attrs")["split"].alias("split"), F.col("label").cast("double").alias("label"),
+                            F.col("attrs")["ingest_ts"].cast("double").alias("ingest_ms"))
+
+
 def build_scores(telemetry):
     """telemetry (entity_id, event_time watermarked, metrics, attrs, label) -> scored windows with the
     scores-layer columns plus split, ws_us, max_ingest_ms and batch_ingest_ms (null without attrs.ingest_ts)."""
@@ -439,10 +459,7 @@ def build_scores(telemetry):
     from pyspark.sql.streaming.state import GroupStateTimeout
     from src.streaming import score_job as mod  # by-name reference, so workers keep their model cache
 
-    rows = telemetry.select("entity_id", F.expr("unix_micros(event_time)").alias("event_us"),
-                            *[F.col("metrics")[m].alias(m) for m in METRICS],
-                            F.col("attrs")["split"].alias("split"), F.col("label").cast("double").alias("label"),
-                            F.col("attrs")["ingest_ts"].cast("double").alias("ingest_ms"))
+    rows = telemetry_rows(telemetry)
     windows = rows.groupBy("entity_id").applyInPandasWithState(
         mod.score_group, OUTPUT_DDL, STATE_DDL, "append", GroupStateTimeout.NoTimeout)
     cols = {"window_start": F.expr("timestamp_micros(ws_us)"),
@@ -499,6 +516,19 @@ def positive_int(text: str) -> int:
     return value
 
 
+STATE_STORES = {"hdfs": None,   # Spark's default HDFSBackedStateStoreProvider, nothing set
+                "rocksdb": "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"}
+
+
+def state_store_conf(name: str) -> dict[str, str]:
+    """--state-store -> the SQL confs to set before the query starts ({} for the default hdfs)."""
+    provider = STATE_STORES[name]
+    if provider is None:
+        return {}
+    return {"spark.sql.streaming.stateStore.providerClass": provider,
+            "spark.sql.streaming.stateStore.rocksdb.changelogCheckpointing.enabled": "true"}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--input", choices=("kafka", "files"), default="kafka")
@@ -523,13 +553,22 @@ def main(argv=None) -> int:
                         help="stop once rows were seen and no micro-batch had input rows for this many seconds")
     parser.add_argument("--max-offsets-per-trigger", type=positive_int, default=None, metavar="N",
                         help="kafka input: at most N records per micro-batch (maxOffsetsPerTrigger; default: no cap)")
+    parser.add_argument("--read-only", action="store_true",
+                        help="experiment: read + parse telemetry, then only persist+count per batch (no state, "
+                             "no scoring, no writes)")
+    parser.add_argument("--checkpoint-dir", type=Path, default=None, metavar="PATH",
+                        help="query checkpoint directory (default checkpoints/score/source=smd)")
+    parser.add_argument("--state-store", choices=tuple(STATE_STORES), default="hdfs",
+                        help="state store provider: hdfs (Spark default) or rocksdb (+ changelog checkpointing); "
+                             "only on a fresh checkpoint")
     args = parser.parse_args(argv)
+    checkpoint_dir = Path(args.checkpoint_dir if args.checkpoint_dir is not None else CHECKPOINT_DIR)
 
     if not (AE_DIR / "model.pt").exists():
         print(f"FAIL no autoencoder at {AE_DIR.relative_to(ROOT).as_posix()}: run src/detection/autoencoder.py")
         return 1
     if args.reset:
-        for d in (OUTPUT_DIR, CHECKPOINT_DIR, LATENCY_ROOT):
+        for d in (OUTPUT_DIR, checkpoint_dir, LATENCY_ROOT):
             shutil.rmtree(d, ignore_errors=True)
         print("reset: removed stream output and checkpoint", flush=True)
     if args.tier1 == "v1" and not TIER1_PATH.exists():
@@ -548,6 +587,10 @@ def main(argv=None) -> int:
     spark = build_spark("score_job", with_kafka=kafka, master=args.master,
                         shuffle_partitions=args.shuffle_partitions)
     spark.sparkContext.setLogLevel("ERROR")
+    for key, value in state_store_conf(args.state_store).items():
+        spark.conf.set(key, value)   # SQL confs: read when the query starts (and then fixed in its checkpoint)
+    print(f"state store: {args.state_store}; checkpoint {checkpoint_dir.as_posix()}"
+          f"{'; READ-ONLY experiment: no state, no scoring, no output' if args.read_only else ''}", flush=True)
     if kafka:
         telemetry, what = read_telemetry(spark, args.max_offsets_per_trigger), S.TOPIC_SMD
         if args.max_offsets_per_trigger is not None:
@@ -597,12 +640,26 @@ def main(argv=None) -> int:
             batch_df.unpersist()
             steps_ms[batch_id] = marks
 
-    writer = (build_scores(telemetry).writeStream.foreachBatch(write_batch)
-              .option("checkpointLocation", CHECKPOINT_DIR.as_posix()))
+    def count_batch(batch_df, batch_id):
+        """--read-only: materialise the parsed rows (persist + count, as write_batch does) and nothing else."""
+        t0 = time.perf_counter()
+        batch_df.persist()
+        try:
+            stats[batch_id] = (batch_df.count(), 0, 0)
+        finally:
+            batch_df.unpersist()
+            steps_ms[batch_id] = {"count(read only)": round((time.perf_counter() - t0) * 1000)}
+
+    if args.read_only:
+        writer = telemetry_rows(telemetry).writeStream.foreachBatch(count_batch)
+    else:
+        writer = build_scores(telemetry).writeStream.foreachBatch(write_batch)
+    writer = writer.option("checkpointLocation", checkpoint_dir.as_posix())
     writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime=args.trigger)
     query = writer.start()
-    print(f"score_job started: {what} -> {OUTPUT_DIR.relative_to(ROOT).as_posix()}"
-          f"{' + topic ' + S.TOPIC_ANOMALIES if kafka else ''}", flush=True)
+    sink = ("count only (--read-only)" if args.read_only else OUTPUT_DIR.relative_to(ROOT).as_posix()
+            + (" + topic " + S.TOPIC_ANOMALIES if kafka else ""))
+    print(f"score_job started: {what} -> {sink}", flush=True)
 
     last_batch = -1
     started = last_input = time.monotonic()
@@ -620,8 +677,9 @@ def main(argv=None) -> int:
                         f.write(json.dumps({"logged_ts_ms": int(time.time() * 1000), **p}) + "\n")
                 state_rows = sum(op.get("numRowsTotal", 0) for op in p.get("stateOperators", []))
                 n_windows, n_test, n_anom = stats.get(p["batchId"], (0, 0, 0))
-                print(f"batch {p['batchId']}: input rows {p.get('numInputRows', 0)}, windows scored {n_windows} "
-                      f"(test {n_test}, anomalies {n_anom}), duration "
+                done = (f"rows counted {n_windows}" if args.read_only
+                        else f"windows scored {n_windows} (test {n_test}, anomalies {n_anom})")
+                print(f"batch {p['batchId']}: input rows {p.get('numInputRows', 0)}, {done}, duration "
                       f"{p.get('durationMs', {}).get('triggerExecution', 0)} ms, state rows {state_rows}", flush=True)
                 print(f"  durationMs {json.dumps(p.get('durationMs', {}), sort_keys=True)}", flush=True)
                 if p["batchId"] in steps_ms:
