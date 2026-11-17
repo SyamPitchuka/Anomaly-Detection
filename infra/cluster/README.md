@@ -385,3 +385,17 @@ Rules:
 | `Python in worker has different version` | `$VENV_DIR` differs between nodes; re-run `deploy.sh spark` |
 | `No module named src` / `contracts` on executors | the share is not mounted at `$REPO_DIR` on that node, or the repo was not copied (`deploy.sh repo`) |
 | Permission denied writing `checkpoints/` | `spark` uid / gid differ between VMs; they must match `SPARK_UID` / `SPARK_GID` |
+
+## Optional: Cassandra serving store (E6)
+
+Not part of `deploy.sh all`; the pipeline runs exactly as before without it.
+
+- `bash infra/cluster/deploy.sh cassandra` installs Apache Cassandra 5.0.x (tarball, Java 17) on `CASSANDRA_HOSTS`
+  (default `spark-w2 spark-w5`, the two 16 GB VMs) with `40_cassandra.sh`: cluster `spark-anomaly`, both nodes seeds,
+  listening on the private IP, 2 GB heap, systemd unit `cassandra`. Downloads go through the outbound proxy.
+- `bash infra/cluster/health_check.sh cassandra`: unit active, CQL port open, `nodetool status` shows every node UN.
+- `src/serving/cassandra_store.py`: keyspace `anomaly` (SimpleStrategy, RF 2), tables `anomalies_by_machine` and
+  `incidents_by_machine`, idempotent upserts keyed on (entity_id, window_start) / (entity_id, start_time).
+- `score_job.py --cassandra spark-w2,spark-w5 [--cassandra-cl ONE|QUORUM|ALL]` (through `submit.sh ... --`) also
+  upserts each batch's anomalies; unset = no Cassandra.
+- `experiments/e6_cap.py`: the CAP experiment (stops and restarts one node over ssh) -> `docs/results/e6_cap.md/.json`.
