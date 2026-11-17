@@ -94,3 +94,27 @@ def test_report_is_a_markdown_table(tmp_path):
 def test_machines_sorted_naturally():
     rows = [{"entity_id": m, "has_incident": False, "hit": False} for m in ("machine-1-10", "machine-1-2")]
     assert [r["label"] for r in A.summarize(rows)][1:] == ["machine-1-2", "machine-1-10"]
+
+
+def test_random_baseline_matches_the_exact_expectation_and_is_seeded(tmp_path):
+    build_fixture(tmp_path)
+    segs = A.load_segments(tmp_path / S.PATHS["smd_interpretation"])
+    inc = A.load_incidents(tmp_path / S.PATHS["incidents"] / "source=smd")
+    ntr = A.train_row_counts(tmp_path / S.PATHS["raw"] / "source=smd", ["machine-1-1", "machine-1-2"])
+    b = A.random_baseline(segs, inc, ntr, trials=4000, seed=1)
+    assert b["segments"] == 4 and b["with_incident"] == 2           # same coverage as the real run
+    # segments with k = 2 and k = 1 labelled metrics, one incident each: 1 - C(36,3)/C(38,3) and 1 - C(37,3)/C(38,3)
+    exact = (1 - 7140 / 8436) + (1 - 7770 / 8436)
+    assert abs(b["expected_hits"] - exact) < 1e-9
+    assert abs(b["mean_hits"] - exact) < 0.05
+    assert A.random_baseline(segs, inc, ntr, trials=50, seed=3) == A.random_baseline(segs, inc, ntr, trials=50, seed=3)
+
+
+def test_report_has_the_chance_level_section(tmp_path):
+    build_fixture(tmp_path)
+    out = tmp_path / "out" / "attribution.md"
+    A.run(tmp_path, out, trials=50, seed=0)
+    text = out.read_text(encoding="utf-8")
+    assert "## Chance level (random baseline)" in text and "| Random metrics |" in text
+    A.run(tmp_path, out, trials=0)
+    assert "Chance level" not in out.read_text(encoding="utf-8")

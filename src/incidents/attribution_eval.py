@@ -14,10 +14,19 @@ incident.end_time > segment start (incident end_time is the last alert's window_
 Hit@3: a segment is a hit if at least one of its labelled metrics is among the first 3 entries of top_metrics of at
 least one overlapping incident. A segment without an overlapping incident is a miss, so hit-rate@3 = hits / all
 segments. The report also gives the share of segments with an incident and the hit-rate among those segments.
+Random baseline (chance level): every overlapping incident is given TOP_K metrics drawn at random (without
+replacement) from the SMD metrics m00..m37 instead of its real top_metrics; a segment is a hit if one of its labelled
+metrics is among the drawn ones. Segments without an overlapping incident stay misses, so coverage is the same as for
+the real run and only the choice of metrics differs. Repeated --trials times with a fixed --seed; the report gives the
+mean +- standard deviation and the exact expectation (1 - prod over a segment's incidents of C(38-k, 3) / C(38, 3),
+k = labelled metrics of the segment) as a check.
 Only pyarrow is used (no Spark), so it runs on any machine that has the incidents layer on disk.
 """
 import argparse
+import math
+import random
 import re
+import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -109,6 +118,35 @@ def evaluate(segments: list[dict], incidents: dict[str, list[tuple[int, int, lis
     return results
 
 
+def random_baseline(segments: list[dict], incidents: dict[str, list[tuple[int, int, list[str]]]],
+                    n_train: dict[str, int], trials: int = 1000, seed: int = 0) -> dict:
+    """Hit-rate@3 when every overlapping incident gets TOP_K random metrics instead of its real top_metrics.
+
+    Returns hits per trial (mean, std), the exact expected hits, the number of segments / covered segments."""
+    pool = list(S.SMD_METRICS)
+    pairs = []   # (labelled metrics of the segment, number of overlapping incidents)
+    for seg in segments:
+        seg_start, seg_end = segment_bounds_us(n_train[seg["entity_id"]], seg["start_idx"], seg["end_idx"])
+        n_overlap = sum(1 for (start, end, _) in incidents.get(seg["entity_id"], [])
+                        if start < seg_end and end > seg_start)
+        if n_overlap:
+            pairs.append((seg["metrics"], n_overlap))
+    rng = random.Random(seed)
+    hits = []
+    for _ in range(trials):
+        n_hit = 0
+        for metrics, n_overlap in pairs:
+            drawn = set()
+            for _i in range(n_overlap):
+                drawn.update(rng.sample(pool, TOP_K))
+            n_hit += bool(metrics & drawn)
+        hits.append(n_hit)
+    miss_one = lambda k: math.comb(len(pool) - k, TOP_K) / math.comb(len(pool), TOP_K)   # noqa: E731
+    expected = sum(1 - miss_one(len(m & set(pool))) ** n for m, n in pairs)
+    return {"segments": len(segments), "with_incident": len(pairs), "trials": trials, "seed": seed,
+            "mean_hits": statistics.fmean(hits), "std_hits": statistics.pstdev(hits), "expected_hits": expected}
+
+
 def _machine_key(name: str) -> tuple:
     """Natural sort: machine-1-2 before machine-1-10."""
     return tuple(int(p) if p.isdigit() else p for p in re.split(r"(\d+)", name))
@@ -131,7 +169,7 @@ def _pct(num: int, den: int) -> str:
     return f"{100.0 * num / den:.1f} %" if den else "n/a"
 
 
-def render_markdown(summary: list[dict]) -> str:
+def render_markdown(summary: list[dict], baseline: dict | None = None) -> str:
     lines = [
         "# Incident attribution: hit-rate@3 on SMD",
         "",
@@ -147,18 +185,45 @@ def render_markdown(summary: list[dict]) -> str:
     for row in summary:
         lines.append(f"| {row['label']} | {row['segments']} | {row['with_incident']} | {row['hits']} | "
                      f"{_pct(row['hits'], row['segments'])} | {_pct(row['hits'], row['with_incident'])} |")
+    if baseline is not None:
+        n, cov = baseline["segments"], baseline["with_incident"]
+        real = summary[0]
+        lines += [
+            "",
+            "## Chance level (random baseline)",
+            "",
+            f"Same calculation, but every overlapping incident gets {TOP_K} metrics drawn at random from the "
+            f"{len(S.SMD_METRICS)} SMD metrics instead of its `top_metrics`. Segments without an incident stay misses, "
+            f"so coverage is identical. {baseline['trials']} trials, seed {baseline['seed']}; mean +- std over trials.",
+            "",
+            "| | Hits@3 | Hit-rate@3 | Hit-rate if covered |",
+            "|---|---:|---:|---:|",
+            f"| Real `top_metrics` | {real['hits']} | {_pct(real['hits'], n)} | {_pct(real['hits'], cov)} |",
+            f"| Random metrics | {baseline['mean_hits']:.1f} +- {baseline['std_hits']:.1f} | "
+            f"{_pct(baseline['mean_hits'], n)} | {_pct(baseline['mean_hits'], cov)} |",
+            "",
+            f"Exact expectation of the random baseline: {baseline['expected_hits']:.1f} hits "
+            f"({_pct(baseline['expected_hits'], n)} of all segments, {_pct(baseline['expected_hits'], cov)} if covered).",
+        ]
     return "\n".join(lines) + "\n"
 
 
-def run(root: Path, out: Path) -> list[dict]:
-    """Evaluate the layers under root and write the Markdown report to out; returns the summary rows."""
+def evaluate_root(root: Path, trials: int = 1000, seed: int = 0) -> tuple[list[dict], dict | None]:
+    """Summary rows and random baseline (None when trials = 0) for the layers under root."""
     segments = load_segments(root / S.PATHS["smd_interpretation"])
     incidents = load_incidents(root / S.PATHS["incidents"] / f"source={SOURCE}")
     machines = sorted({s["entity_id"] for s in segments}, key=_machine_key)
     n_train = train_row_counts(root / S.PATHS["raw"] / f"source={SOURCE}", machines)
     summary = summarize(evaluate(segments, incidents, n_train))
+    baseline = random_baseline(segments, incidents, n_train, trials, seed) if trials > 0 else None
+    return summary, baseline
+
+
+def run(root: Path, out: Path, trials: int = 1000, seed: int = 0) -> list[dict]:
+    """Evaluate the layers under root and write the Markdown report to out; returns the summary rows."""
+    summary, baseline = evaluate_root(root, trials, seed)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render_markdown(summary), encoding="utf-8")
+    out.write_text(render_markdown(summary, baseline), encoding="utf-8")
     return summary
 
 
@@ -166,12 +231,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=ROOT, help="repo root that contains data/")
     parser.add_argument("--out", type=Path, default=None, help="report path (default docs/results/attribution.md)")
+    parser.add_argument("--trials", type=int, default=1000, help="random-baseline trials (0 = skip the baseline)")
+    parser.add_argument("--seed", type=int, default=0, help="random-baseline seed")
     args = parser.parse_args()
     out = args.out if args.out is not None else args.root / DEFAULT_OUT
-    summary = run(args.root, out)
+    summary, baseline = evaluate_root(args.root, args.trials, args.seed)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_markdown(summary, baseline), encoding="utf-8")
     overall = summary[0]
     print(f"hit-rate@{TOP_K}: {overall['hits']}/{overall['segments']} segments "
           f"({_pct(overall['hits'], overall['segments'])}); wrote {out.as_posix()}")
+    if baseline is not None:
+        print(f"random baseline: {baseline['mean_hits']:.1f} hits "
+              f"({_pct(baseline['mean_hits'], overall['segments'])}), exact {baseline['expected_hits']:.1f}")
     return 0
 
 
