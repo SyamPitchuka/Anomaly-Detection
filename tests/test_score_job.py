@@ -115,6 +115,51 @@ def test_stream_matches_batch(setup, chunk):
     assert out["tier1_score"].isna().all() and out["tier1_flag"].isna().all()
 
 
+class _FakeGroupState:
+    """The part of GroupState that score_group uses, holding the tuple form between calls."""
+
+    def __init__(self):
+        self.value = None
+
+    @property
+    def exists(self):
+        return self.value is not None
+
+    @property
+    def get(self):
+        return self.value
+
+    def update(self, value):
+        self.value = value
+
+
+def _run_score_group(rows: pd.DataFrame, machine: str, chunk: int) -> pd.DataFrame:
+    state, outs = _FakeGroupState(), []
+    for start in range(0, len(rows), chunk):
+        part = rows.iloc[start:start + chunk]
+        # split each micro-batch into pieces, as several read tasks / Arrow batches hand them to Spark
+        pieces = [part.iloc[i:i + 5] for i in range(0, len(part), 5)]
+        outs += list(M.score_group((machine,), iter(pieces), state))
+    return pd.concat(outs, ignore_index=True)
+
+
+@pytest.mark.parametrize("chunk", [37, 10_000])
+def test_score_group_ignores_row_order(setup, monkeypatch, chunk):
+    """Rows of a micro-batch in any order (Kafka order, minPartitions split, shuffle) give the same output."""
+    raw, _, models = setup
+    monkeypatch.setattr(M, "get_models", lambda: models)
+    rows = raw[raw["entity_id"] == MACHINES[0]].drop(columns="entity_id").sort_values("event_us")
+    rows = rows.reset_index(drop=True)
+    want = _run_score_group(rows, MACHINES[0], chunk)
+    # shuffle inside each micro-batch only: the batches themselves still arrive in offset order
+    shuffled = pd.concat([rows.iloc[s:s + chunk].sample(frac=1.0, random_state=s)
+                          for s in range(0, len(rows), chunk)])
+    assert not shuffled["event_us"].is_monotonic_increasing
+    got = _run_score_group(shuffled, MACHINES[0], chunk)
+    assert len(want) > 0
+    pd.testing.assert_frame_equal(got, want, check_exact=True)
+
+
 def test_late_rows_dropped(setup):
     raw, _, models = setup
     n_in = len(models["ae"]["feature_metrics"])
@@ -222,18 +267,20 @@ def test_max_offsets_per_trigger_reaches_the_kafka_source(monkeypatch, tmp_path)
     class FakeSpark:
         sparkContext = type("SC", (), {"setLogLevel": lambda self, level: None})()
 
-    def fake_read(spark, max_offsets_per_trigger=None):
-        seen.append(max_offsets_per_trigger)
+    def fake_read(spark, max_offsets_per_trigger=None, min_partitions=None):
+        seen.append((max_offsets_per_trigger, min_partitions))
         raise Stop
 
     monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: FakeSpark())
     monkeypatch.setattr(features_job, "read_telemetry", fake_read)
-    for argv in (["--input", "kafka", "--max-offsets-per-trigger", "200000"], ["--input", "kafka"]):
+    for argv in (["--input", "kafka", "--max-offsets-per-trigger", "200000"], ["--input", "kafka"],
+                 ["--input", "kafka", "--min-partitions", "40"]):
         with pytest.raises(Stop):
             M.main(argv)
-    assert seen == [200000, None]
-    with pytest.raises(SystemExit):
-        M.main(["--max-offsets-per-trigger", "0"])
+    assert seen == [(200000, None), (None, None), (None, 40)]
+    for bad in (["--max-offsets-per-trigger", "0"], ["--min-partitions", "0"]):
+        with pytest.raises(SystemExit):
+            M.main(bad)
 
 
 def test_read_telemetry_sets_max_offsets_per_trigger_only_when_given():
@@ -260,6 +307,12 @@ def test_read_telemetry_sets_max_offsets_per_trigger_only_when_given():
             features_job.read_telemetry(spark, cap)
         assert e.value.args[0].get("maxOffsetsPerTrigger") == want
         assert e.value.args[0]["subscribe"] == S.TOPIC_SMD and e.value.args[0]["startingOffsets"] == "earliest"
+    for parts, want in ((None, None), (40, 40)):
+        reader = Reader()
+        spark = type("Spark", (), {"readStream": reader})()
+        with pytest.raises(StopIteration) as e:
+            features_job.read_telemetry(spark, min_partitions=parts)
+        assert e.value.args[0].get("minPartitions") == want
 
 
 def test_state_store_conf():
@@ -293,7 +346,7 @@ def test_experiment_switches_reach_spark(monkeypatch, tmp_path):
     confs: dict = {}
     calls = []
     monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: FakeSpark())
-    monkeypatch.setattr(features_job, "read_telemetry", lambda spark, cap=None: "telemetry")
+    monkeypatch.setattr(features_job, "read_telemetry", lambda spark, cap=None, **kw: "telemetry")
     monkeypatch.setattr(M, "build_scores", lambda t: (calls.append("build_scores"), (_ for _ in ()).throw(Stop))[1])
     monkeypatch.setattr(M, "telemetry_rows", lambda t: (calls.append(("rows", t)), (_ for _ in ()).throw(Stop))[1])
 

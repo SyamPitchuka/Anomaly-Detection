@@ -61,6 +61,9 @@ machine. The output keeps the replica's own entity_id.
 
 Rate limit: --max-offsets-per-trigger N caps the Kafka records per micro-batch (maxOffsetsPerTrigger;
 default unset = no cap, Spark reads everything available). infra/cluster/drain_test.sh sets it.
+--min-partitions N sets the Kafka source option minPartitions: Spark splits the batch's offset ranges into at
+least N evenly sized read tasks (default unset = one task per topic partition, as before). Results do not
+depend on it: rows are shuffled by entity_id before the stateful step, which sorts them (see score_group).
 
 Stopping without Ctrl+C (for scripted runs): --max-seconds S stops the query after S wall seconds,
 --idle-stop S once rows were seen and no micro-batch had input rows for S seconds.
@@ -418,6 +421,11 @@ def score_group(key, pdf_iter, state):
     t0 = time.perf_counter()
     models = get_models()
     n_in = len(models["ae"]["feature_metrics"])
+    # Correctness does not depend on the order of rows inside a micro-batch (Kafka order, read-task split
+    # from --min-partitions, or the shuffle by entity_id). Windows are sums / maxima grouped by window start
+    # and the watermark is a max, so any order gives the same windows; step() also sorts this machine's rows
+    # by event_us (stable) before folding them in, so the float sums are added in one fixed order and the
+    # scores are bit-identical. tests/test_score_job.py::test_score_group_ignores_row_order checks it exactly.
     rows = pd.concat(list(pdf_iter), ignore_index=True)
     st = decode_state(state.get, n_in) if state.exists else new_state(n_in)
     out, _ = step(key[0], rows, st, models)
@@ -553,6 +561,9 @@ def main(argv=None) -> int:
                         help="stop once rows were seen and no micro-batch had input rows for this many seconds")
     parser.add_argument("--max-offsets-per-trigger", type=positive_int, default=None, metavar="N",
                         help="kafka input: at most N records per micro-batch (maxOffsetsPerTrigger; default: no cap)")
+    parser.add_argument("--min-partitions", type=positive_int, default=None, metavar="N",
+                        help="kafka input: Kafka source minPartitions, split offset ranges into >= N read tasks "
+                             "(default: one task per topic partition)")
     parser.add_argument("--read-only", action="store_true",
                         help="experiment: read + parse telemetry, then only persist+count per batch (no state, "
                              "no scoring, no writes)")
@@ -592,9 +603,12 @@ def main(argv=None) -> int:
     print(f"state store: {args.state_store}; checkpoint {checkpoint_dir.as_posix()}"
           f"{'; READ-ONLY experiment: no state, no scoring, no output' if args.read_only else ''}", flush=True)
     if kafka:
-        telemetry, what = read_telemetry(spark, args.max_offsets_per_trigger), S.TOPIC_SMD
+        telemetry, what = read_telemetry(spark, args.max_offsets_per_trigger,
+                                         min_partitions=args.min_partitions), S.TOPIC_SMD
         if args.max_offsets_per_trigger is not None:
             what += f" (maxOffsetsPerTrigger {args.max_offsets_per_trigger})"
+        print(f"kafka minPartitions: {args.min_partitions if args.min_partitions is not None else 'unset'}"
+              " (unset = one read task per topic partition)", flush=True)
     else:
         telemetry, names = read_files(spark, args.machines, args.files_per_trigger)
         what = f"{len(names)} machine files ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"

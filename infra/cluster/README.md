@@ -321,6 +321,8 @@ sudo -u spark bash infra/cluster/drain_test.sh -e 2 -c 2 -n 2000000 -m 200000   
 sudo -u spark /opt/anomaly-venv/bin/python experiments/e2_scaling_sweep.py \
     --configs 1x2 2x2 3x2 4x2 --repeats 3 --records 2000000                           # -> docs/results/e2_cluster.md + .png
 sudo -u spark /opt/anomaly-venv/bin/python experiments/e2_scaling_sweep.py --weak --dry-run   # weak scaling: replay.py --replicate
+sudo -u spark /opt/anomaly-venv/bin/python experiments/e2_scaling_sweep.py \
+    --configs 1x2 3x2 5x2 --repeats 2 --tag minpart40 --job-args="--min-partitions 40"   # Kafka minPartitions: >= 40 even read tasks
 ```
 
 Weak scaling (`--weak`, or `drain_test.sh -r K`) sends K renamed copies of every machine (`<machine>-r1..-rK`); score_job scores a
