@@ -34,6 +34,17 @@ Each labelled SMD test anomaly segment (`data/reference/smd_interpretation`) is 
 | machine-3-10 | 13 | 4 | 4 | 30.8 % | 100.0 % |
 | machine-3-11 | 3 | 3 | 2 | 66.7 % | 66.7 % |
 
+## Chance level (random baseline)
+
+Same calculation, but every overlapping incident gets 3 metrics drawn at random from the 38 SMD metrics instead of its `top_metrics`. Segments without an incident stay misses, so coverage is identical. 1000 trials, seed 0; mean +- std over trials.
+
+| | Hits@3 | Hit-rate@3 | Hit-rate if covered |
+|---|---:|---:|---:|
+| Real `top_metrics` | 172 | 52.6 % | 94.5 % |
+| Random metrics | 97.7 +- 5.3 | 29.9 % | 53.7 % |
+
+Exact expectation of the random baseline: 97.6 hits (29.8 % of all segments, 53.6 % if covered).
+
 ## Provenance
 
 - **Scores:** the stream output of the E3 clean run (`data/e3/e3_full2/clean/scores` on spark-master): the whole SMD set (1,416,825 records) through `score_job` with the autoencoder, 141,624 test windows of 28 machines, 1,158 anomalous windows (`is_anomaly = ae_flag`). The offline `data/scores` layer on the VM (4 Nov) has no autoencoder scores (`ae_score` null, no anomalies), so it cannot give incidents.
