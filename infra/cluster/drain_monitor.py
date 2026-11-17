@@ -47,7 +47,8 @@ CSV_NAME = "drain_runs.csv"
 CSV_FIELDS = ["run_id", "ts_utc", "status", "executors", "cores", "total_cores", "max_offsets_per_trigger",
               "replicate", "topic_partitions", "shuffle_partitions", "records", "consumed", "drain_s", "records_per_s",
               "steady_records_per_s", "batches", "batch_mean_s", "batch_p95_s", "first_batch_s", "wall_s",
-              "executors_seen", "executors_max_active", "executor_cores_max"]
+              "executors_seen", "executors_max_active", "executor_cores_max",
+              "tag", "job_args", "checkpoint_dir", "allow_local_checkpoint"]
 POLL_S = 2.0
 
 
@@ -206,6 +207,15 @@ def write_result(result: dict, out_dir: Path) -> tuple[Path, Path]:
     js.write_text(json.dumps(_no_nan(result), indent=2, allow_nan=False, default=str) + "\n", encoding="utf-8")
     cs = out_dir / CSV_NAME
     new = not cs.exists() or cs.stat().st_size == 0
+    if not new:
+        with cs.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            old_rows = list(reader) if reader.fieldnames != CSV_FIELDS else None
+        if old_rows is not None:   # written with an older CSV_FIELDS: rewrite it with the new header (new cells empty)
+            with cs.open("w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(old_rows)
     with cs.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         if new:

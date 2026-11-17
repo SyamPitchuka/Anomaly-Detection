@@ -24,6 +24,13 @@
 #       --ui URL           driver Spark UI for the executor count (default $SPARK_UI_URL or http://localhost:4040)
 #       --keep-topic       do not recreate the topic or replay: drain what is already there (a re-run of the
 #                          same backlog). score_job still runs with --reset; the topic must still have P partitions
+#   -k, --checkpoint-dir D checkpoint ROOT for submit.sh -k (default: submit.sh's, the shared checkpoints/). '{run_id}'
+#                          in D is replaced by the run id, e.g. /tmp/ckpt-{run_id}, so no run sees an older state
+#       --allow-local-checkpoint  EXPERIMENT ONLY: passed to submit.sh, lets D be outside the shared storage (each
+#                          node's local disk; recovery not guaranteed). Local dirs are left on the nodes: delete them
+#       --tag NAME         free-text label stored in the result JSON/CSV (e2_scaling_sweep.py --tag)
+#   --                     everything after it goes to score_job.py (e.g. --read-only, --state-store rocksdb); stored
+#                          as job_args in the result JSON/CSV
 #       --print-config     print the resolved settings (key=value) and exit, touching nothing (used by the tests)
 #
 # Steps
@@ -60,6 +67,9 @@ CORES=""
 SHUFFLE=""
 TOPIC_PARTITIONS=32
 PRINT_CONFIG=0
+CKPT_ROOT=""
+ALLOW_LOCAL_CKPT=0
+TAG=""
 LOOP_GAP_S=3600
 JOB_ARGS=()
 
@@ -78,6 +88,9 @@ while [[ $# -gt 0 ]]; do
         --run-id)                RUN_ID="${2:?--run-id needs a value}"; shift 2 ;;
         -o|--out)                OUT="${2:?--out needs a value}"; shift 2 ;;
         --keep-topic)            KEEP_TOPIC=1; shift ;;
+        -k|--checkpoint-dir)     CKPT_ROOT="${2:?--checkpoint-dir needs a value}"; shift 2 ;;
+        --allow-local-checkpoint) ALLOW_LOCAL_CKPT=1; shift ;;
+        --tag)                   TAG="${2:?--tag needs a value}"; shift 2 ;;
         --ui)                    UI_URL="${2:?--ui needs a value}"; shift 2 ;;
         -h|--help)               sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
         --)                      shift; JOB_ARGS=("$@"); break ;;
@@ -94,10 +107,17 @@ for v in SHUFFLE TOPIC_PARTITIONS RECORDS MAX_OFFSETS TIMEOUT_S; do
     [[ "${!v}" =~ ^[1-9][0-9]*$ ]] || die "${v} must be a positive integer, got '${!v}'"
 done
 [[ -z "${REPLICATE}" || "${REPLICATE}" =~ ^[1-9][0-9]*$ ]] || die "--replicate must be a positive integer"
+[[ "${TAG}" =~ ^[A-Za-z0-9._-]*$ ]] || die "--tag may only hold letters, digits, '.', '_' and '-', got '${TAG}'"
+RUN_ID="${RUN_ID:-e${EXECUTORS}c${CORES}_$(date -u +%Y%m%dT%H%M%SZ)}"
+CKPT_ROOT="${CKPT_ROOT//\{run_id\}/${RUN_ID}}"
+JOB_ARGS_TEXT="${JOB_ARGS[*]}"
+SUBMIT_CKPT=()
+[[ -z "${CKPT_ROOT}" ]] || SUBMIT_CKPT+=(--checkpoint-dir "${CKPT_ROOT}")
+[[ "${ALLOW_LOCAL_CKPT}" -eq 0 ]] || SUBMIT_CKPT+=(--allow-local-checkpoint)
 if [[ "${PRINT_CONFIG}" -eq 1 ]]; then
     printf '%s\n' "executors=${EXECUTORS}" "cores=${CORES}" "shuffle_partitions=${SHUFFLE}" \
         "topic_partitions=${TOPIC_PARTITIONS}" "records=${RECORDS}" "max_offsets_per_trigger=${MAX_OFFSETS}" \
-        "replicate=${REPLICATE}"
+        "replicate=${REPLICATE}" "run_id=${RUN_ID}" "checkpoint_dir=${CKPT_ROOT}"         "allow_local_checkpoint=${ALLOW_LOCAL_CKPT}" "tag=${TAG}" "job_args=${JOB_ARGS_TEXT}"
     exit 0
 fi
 
@@ -108,7 +128,6 @@ cd "${REPO_DIR}"
 compgen -G "${REPO_DIR}/data/raw/source=smd/*.parquet" > /dev/null || die "no raw data in ${REPO_DIR}/data/raw/source=smd"
 
 TOPIC="$("${PY}" -c "from contracts import schemas as S; print(S.TOPIC_SMD)")"
-RUN_ID="${RUN_ID:-e${EXECUTORS}c${CORES}_$(date -u +%Y%m%dT%H%M%SZ)}"
 OUT="${OUT:-${REPO_DIR}/data/scaling}"
 mkdir -p "${OUT}"
 OUT="$(cd "${OUT}" && pwd)"
@@ -119,6 +138,7 @@ REPL_ARGS=()
 [[ -z "${REPLICATE}" ]] || REPL_ARGS=(--replicate "${REPLICATE}")
 
 log "drain ${RUN_ID}: ${RECORDS} records, ${EXECUTORS} executors x ${CORES} cores, ${TOPIC_PARTITIONS} topic partitions, ${SHUFFLE} shuffle partitions, maxOffsetsPerTrigger ${MAX_OFFSETS}, replicate ${REPLICATE:-none}, logs in ${LOGS}"
+log "    score_job extra args: ${JOB_ARGS_TEXT:-none}; checkpoint root: ${CKPT_ROOT:-submit.sh default}$([[ "${ALLOW_LOCAL_CKPT}" -eq 1 ]] && echo ' (local allowed, experiment only)')${TAG:+; tag ${TAG}}"
 
 # score_job runs in its own process group (job_group.py start: setsid, output only to score_job.log), so a Ctrl+C
 # in this terminal does not reach it and stopping it never depends on the caller's terminal or pipe.
@@ -184,7 +204,7 @@ T0_MS="$(date +%s%3N)"
 log "(c) submitting score_job"
 "${PY}" "${CLUSTER_DIR}/job_group.py" start --log "${LOGS}/score_job.log" -- \
     bash "${CLUSTER_DIR}/submit.sh" --executors "${EXECUTORS}" --cores "${CORES}" --shuffle-partitions "${SHUFFLE}" \
-    --max-offsets-per-trigger "${MAX_OFFSETS}" -- --reset --trigger "${TRIGGER_EVERY}" "${JOB_ARGS[@]}" \
+    --max-offsets-per-trigger "${MAX_OFFSETS}" "${SUBMIT_CKPT[@]}" -- --reset --trigger "${TRIGGER_EVERY}" "${JOB_ARGS[@]}" \
     < /dev/null > /dev/null 2>&1 &
 JOB_PID=$!          # job_group.py setsid-s and execs in place: this pid is the process group id of the whole job
 
@@ -195,7 +215,7 @@ rc=0
     --progress "${PROGRESS}" --out "${OUT}" --run-id "${RUN_ID}" --job-pid "${JOB_PID}" --since-ms "${T0_MS}" \
     --timeout "${TIMEOUT_S}" --ui "${UI_URL}" \
     --meta "executors=${EXECUTORS}" "cores=${CORES}" "max_offsets_per_trigger=${MAX_OFFSETS}" \
-           "replicate=${REPLICATE}" "topic_partitions=${TOPIC_PARTITIONS}" "shuffle_partitions=${SHUFFLE}" "trigger=${TRIGGER_EVERY// /_}" \
+           "replicate=${REPLICATE}" "topic_partitions=${TOPIC_PARTITIONS}" "shuffle_partitions=${SHUFFLE}" "trigger=${TRIGGER_EVERY// /_}"            "job_args=${JOB_ARGS_TEXT}" "checkpoint_dir=${CKPT_ROOT}" "allow_local_checkpoint=${ALLOW_LOCAL_CKPT}"            "tag=${TAG}" \
     || rc=$?
 log "stopping score_job"
 cleanup             # never fails, never blocks for more than ~150 s

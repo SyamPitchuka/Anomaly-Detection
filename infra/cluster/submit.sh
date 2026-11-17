@@ -8,7 +8,10 @@
 #   -e, --executors N        number of executors (default: every executor the cluster can hold)
 #   -c, --cores N            cores per executor   (default: SPARK_EXECUTOR_CORES of the VM profile)
 #   -k, --checkpoint-dir D   checkpoint ROOT on shared storage (default: $CHECKPOINT_DIR = $REPO_DIR/checkpoints);
-#                            the query checkpoint is D/score/source=smd. Must be under $SHARED_DIR.
+#                            the query checkpoint is D/score/source=smd. Must be under $SHARED_DIR, unless
+#       --allow-local-checkpoint  EXPERIMENT ONLY (E2 bottleneck): accept a D outside $SHARED_DIR, e.g. /tmp/ckpt-<run>,
+#                            so the driver keeps offsets/commits and every executor its state files on its own local
+#                            disk. Prints a warning: recovery after a driver or executor loss is NOT guaranteed.
 #   -p, --shuffle-partitions N  spark.sql.shuffle.partitions (default 16). Keep it constant for the life of a
 #                            checkpoint: Spark fixes the state-store partition count when the query first starts.
 #   -m, --max-offsets-per-trigger N  at most N Kafka records per micro-batch (score_job --max-offsets-per-trigger,
@@ -37,6 +40,7 @@ CKPT_ROOT="${CHECKPOINT_DIR}"
 SHUFFLE_PARTITIONS=16
 MAX_OFFSETS=""
 MODEL_CHECK=1
+ALLOW_LOCAL_CKPT=0
 DRY_RUN=0
 JOB_ARGS=()
 
@@ -50,6 +54,7 @@ while [[ $# -gt 0 ]]; do
         -p|--shuffle-partitions) SHUFFLE_PARTITIONS="${2:?--shuffle-partitions needs a value}"; shift 2 ;;
         -m|--max-offsets-per-trigger) MAX_OFFSETS="${2:?--max-offsets-per-trigger needs a value}"; shift 2 ;;
         --skip-model-check)      MODEL_CHECK=0; shift ;;
+        --allow-local-checkpoint) ALLOW_LOCAL_CKPT=1; shift ;;
         --dry-run)               DRY_RUN=1; shift ;;
         -h|--help)               usage; exit 0 ;;
         --)                      shift; JOB_ARGS=("$@"); break ;;
@@ -82,9 +87,14 @@ need_mb=$((WORST_PER_WORKER * (exec_mb + overhead_mb) + $(mem_to_mb "${SPARK_DAE
 
 # ---- checkpoints must be on shared storage --------------------------------------------------
 CKPT_ROOT="$(realpath -m "${CKPT_ROOT}")"
+CKPT_LOCAL=0
 case "${CKPT_ROOT}/" in
     "${SHARED_DIR}"/*) ;;
-    *) die "checkpoint dir ${CKPT_ROOT} is not under the shared storage ${SHARED_DIR}; executors and a restarted driver would not see it" ;;
+    *) [[ "${ALLOW_LOCAL_CKPT}" -eq 1 ]]            || die "checkpoint dir ${CKPT_ROOT} is not under the shared storage ${SHARED_DIR}; executors and a restarted driver would not see it (experiments only: --allow-local-checkpoint)"
+       CKPT_LOCAL=1
+       warn "--allow-local-checkpoint: checkpoint ${CKPT_ROOT} is on each node's LOCAL disk (experiment only)."
+       warn "  offsets/commits stay on the driver VM, state files on whichever executor ran the task: recovery after a"
+       warn "  driver restart, an executor loss or a task moving to another executor is NOT guaranteed. Delete it afterwards." ;;
 esac
 SCORE_CHECKPOINT_DIR="${CKPT_ROOT}/score/source=smd"
 
@@ -110,7 +120,7 @@ CMD+=("${JOB_ARGS[@]}")
 
 log "score_job: ${EXECUTORS} executors x ${CORES} cores = ${TOTAL_CORES} cores on ${SPARK_MASTER_URL}"
 log "  Kafka        ${KAFKA_BOOTSTRAP}   package ${KAFKA_PACKAGE}"
-log "  checkpoints  ${SCORE_CHECKPOINT_DIR}"
+log "  checkpoints  ${SCORE_CHECKPOINT_DIR}$([[ "${CKPT_LOCAL}" -eq 1 ]] && echo ' (LOCAL disk of each node, experiment only)')"
 log "  batch cap    ${MAX_OFFSETS:-none} (maxOffsetsPerTrigger)"
 log "  models       ${REPO_DIR}/models (shared mount, checked on ${SPARK_WORKER_COUNT} workers)"
 if [[ "${DRY_RUN}" -eq 1 ]]; then

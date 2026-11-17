@@ -25,6 +25,12 @@ backlog growing K-fold, records/s ratio / K = base drain time / drain time).
 Output: docs/results/e2_cluster.md, e2_cluster.png (throughput vs total cores with the ideal line, speed-up,
 efficiency) and e2_cluster.json (every run, rewritten after each run; --from-json redraws without running).
 
+Bottleneck experiments (each run's JSON / drain_runs.csv row records them as job_args, checkpoint_dir, tag):
+    --tag NAME                 outputs go to docs/results/e2_cluster_<NAME>.md/.png/.json, run ids start e2_<NAME>_
+    --job-args="--read-only"   score_job.py options for every run (drain_test.sh ... -- <job args>); use the '=' form
+    --checkpoint-dir D         drain_test.sh -k D; '{run_id}' in D becomes the run id, e.g. /tmp/ckpt-{run_id}
+    --allow-local-checkpoint   drain_test.sh / submit.sh: D may be each node's local disk (experiment only)
+
 Run ON THE SPARK MASTER VM from the repo root ($REPO_DIR), as the 'spark' user:
     python experiments/e2_scaling_sweep.py
     python experiments/e2_scaling_sweep.py --configs 1x2 2x2 4x2 --repeats 3 --records 4000000
@@ -39,6 +45,7 @@ import argparse
 import json
 import math
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -71,6 +78,24 @@ def replicate_factor(config: tuple[int, int], configs: list[tuple[int, int]]) ->
     if total % base:
         raise ValueError(f"--weak needs every total core count to be a multiple of {base}; {config} has {total}")
     return total // base
+
+
+def output_name(tag: str | None) -> str:
+    """e2_cluster, or e2_cluster_<tag> with --tag."""
+    return f"{NAME}_{tag}" if tag else NAME
+
+
+def experiment_args(checkpoint_dir: str | None = None, allow_local_checkpoint: bool = False,
+                    tag: str | None = None, job_args: list[str] = ()) -> list[str]:
+    """drain_test.sh options for the bottleneck switches; the score_job args go last, after '--'."""
+    cmd = []
+    if checkpoint_dir:
+        cmd += ["-k", checkpoint_dir]
+    if allow_local_checkpoint:
+        cmd.append("--allow-local-checkpoint")
+    if tag:
+        cmd += ["--tag", tag]
+    return cmd + (["--", *job_args] if job_args else [])
 
 
 def run_id(sweep_id: str, config: tuple[int, int], rep: int) -> str:
@@ -267,6 +292,19 @@ def default_notes(table: list[dict]) -> str:
             f"At {last['total_cores']} cores the parallel efficiency is {last['efficiency']:.2f}.")
 
 
+def experiment_line(meta: dict) -> str:
+    """One Markdown line on the bottleneck switches of the sweep ('' when none was used)."""
+    parts = []
+    if meta.get("job_args"):
+        parts.append(f"score_job extra args `{meta['job_args']}`")
+    if meta.get("checkpoint_dir"):
+        local = " (each node's local disk, `--allow-local-checkpoint`)" if meta.get("allow_local_checkpoint") else ""
+        parts.append(f"checkpoint root `{meta['checkpoint_dir']}`{local}")
+    if not parts:
+        return ""
+    return f"**Experiment{' ' + meta['tag'] if meta.get('tag') else ''}:** " + "; ".join(parts) + ".\n"
+
+
 def write_markdown(table: list[dict], runs: list[dict], meta: dict, notes: str, path: Path) -> None:
     weak = meta.get("weak", False)
     load = (f"weak scaling: config with T total cores replays `replicate = T / {table[0]['total_cores']}` copies of "
@@ -283,7 +321,7 @@ Setup: for each config, `infra/cluster/drain_test.sh` recreates `telemetry.smd`,
 with score_job **not** running, then starts score_job (`submit.sh -e E -c C`, `--reset`, trigger `0 seconds`,
 `maxOffsetsPerTrigger = {meta['max_offsets_per_trigger']:,}`) and times how long it takes to consume it; {load}.
 {settings}
-{meta['repeats']} repetitions per config (interleaved), mean with min–max in brackets.
+{experiment_line(meta)}{meta['repeats']} repetitions per config (interleaved), mean with min–max in brackets.
 Cluster: {meta.get('cluster', 'see infra/cluster/cluster.env')}. Measured {meta['date']} with
 `python experiments/e2_scaling_sweep.py {meta.get('argv', '')}`.
 
@@ -308,13 +346,16 @@ Cluster: {meta.get('cluster', 'see infra/cluster/cluster.env')}. Measured {meta[
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def write_outputs(runs: list[dict], meta: dict, out_dir: Path, notes: str | None = None) -> list[dict]:
+def write_outputs(runs: list[dict], meta: dict, out_dir: Path, notes: str | None = None,
+                  name: str | None = None) -> list[dict]:
+    """<name>.json/.png/.md in out_dir; name defaults to output_name(meta['tag'])."""
+    name = name or output_name(meta.get("tag"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / f"{NAME}.json").write_text(json.dumps({"meta": meta, "runs": runs}, indent=2) + "\n", encoding="utf-8")
+    (out_dir / f"{name}.json").write_text(json.dumps({"meta": meta, "runs": runs}, indent=2) + "\n", encoding="utf-8")
     table = aggregate(runs)
     if any(r["ok"] for r in table):
-        plot(table, out_dir / f"{NAME}.png", weak=meta.get("weak", False))
-        write_markdown(table, runs, meta, notes or default_notes(table), out_dir / f"{NAME}.md")
+        plot(table, out_dir / f"{name}.png", weak=meta.get("weak", False))
+        write_markdown(table, runs, meta, notes or default_notes(table), out_dir / f"{name}.md")
     return table
 
 
@@ -388,13 +429,23 @@ def main(argv=None) -> int:
     ap.add_argument("--run-timeout", type=float, default=1800,
                     help="seconds one drain_test.sh may take; then its process group is killed, the run is recorded "
                          "as failed and the sweep goes on (default 1800)")
+    ap.add_argument("--tag", default=None, help="outputs -> e2_cluster_<TAG>.*; stored in every run")
+    ap.add_argument("--job-args", default="", metavar="ARGS",
+                    help='score_job.py options for every run, one string, e.g. --job-args="--read-only"')
+    ap.add_argument("--checkpoint-dir", default=None, metavar="D",
+                    help="drain_test.sh -k D ('{run_id}' -> run id), e.g. /tmp/ckpt-{run_id}")
+    ap.add_argument("--allow-local-checkpoint", action="store_true",
+                    help="experiment only: let --checkpoint-dir be each node's local disk (recovery not guaranteed)")
     ap.add_argument("drain_args", nargs="*", help="after --: extra drain_test.sh options (e.g. -p 32)")
     args = ap.parse_args(argv)
     notes = args.notes.read_text(encoding="utf-8") if args.notes else None
 
+    if args.tag is not None and not all(ch.isalnum() or ch in "._-" for ch in args.tag):
+        ap.error("--tag may only hold letters, digits, '.', '_' and '-'")
     if args.from_json:
         saved = json.loads(args.from_json.read_text(encoding="utf-8"))
-        table = write_outputs(saved["runs"], saved["meta"], args.out_dir, notes)
+        name = output_name(args.tag or saved["meta"].get("tag"))
+        table = write_outputs(saved["runs"], saved["meta"], args.out_dir, notes, name)
         print(markdown_table(table))
         return 0
 
@@ -403,24 +454,29 @@ def main(argv=None) -> int:
     if args.run_timeout <= 0:
         ap.error("--run-timeout must be > 0")
     configs = [parse_config(c) for c in args.configs]
-    sweep_id = "e2_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    job_args = shlex.split(args.job_args)
+    extra = list(args.drain_args) + experiment_args(args.checkpoint_dir, args.allow_local_checkpoint, args.tag,
+                                                    job_args)
+    sweep_id = "e2_" + (f"{args.tag}_" if args.tag else "") + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     plan = []
     for rep, cfg in schedule(configs, args.repeats):
         k = run_replicate(cfg, configs, args.weak, args.replicate)
         records = args.records * k if args.weak else args.records
         rid = run_id(sweep_id, cfg, rep)
         plan.append((rid, cfg, drain_command(cfg, records, args.max_offsets_per_trigger, rid, args.run_dir, k,
-                                             args.drain_args, args.topic_partitions)))
+                                             extra, args.topic_partitions)))
     if args.dry_run:
         for _rid, _cfg, cmd in plan:
-            print(" ".join(cmd))
+            print(shlex.join(cmd))
         return 0
 
     meta = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "sweep_id": sweep_id,
             "configs": args.configs, "repeats": args.repeats, "records": args.records,
             "max_offsets_per_trigger": args.max_offsets_per_trigger, "weak": args.weak,
             "replicate": None if args.weak else args.replicate, "topic_partitions": args.topic_partitions,
-            "cluster": args.cluster, "run_timeout_s": args.run_timeout, "argv": " ".join(argv if argv is not None else sys.argv[1:])}
+            "cluster": args.cluster, "run_timeout_s": args.run_timeout,
+            "tag": args.tag, "job_args": shlex.join(job_args), "checkpoint_dir": args.checkpoint_dir,
+            "allow_local_checkpoint": args.allow_local_checkpoint, "argv": " ".join(argv if argv is not None else sys.argv[1:])}
     runs: list[dict] = []
     for i, (rid, cfg, cmd) in enumerate(plan, 1):
         print(f"[{i}/{len(plan)}] {rid}: {' '.join(cmd)}", flush=True)
@@ -429,13 +485,15 @@ def main(argv=None) -> int:
         if timed_out:
             print(f"    TIMEOUT after {args.run_timeout:.0f} s: killed the run's process group (exit {rc})", flush=True)
         run = _load_run(args.run_dir / f"{rid}.json", rid, cfg, rc, timed_out, args.run_timeout)
+        for key in ("tag", "job_args", "checkpoint_dir"):   # also on runs that wrote no result file
+            run.setdefault(key, meta[key] or None)
         runs.append(run)
         print(f"    {run.get('status')} in {time.monotonic() - t:.0f} s: "
               f"{_fmt(_num(run.get('records_per_s')), ',.0f')} records/s", flush=True)
         write_outputs(runs, meta, args.out_dir, notes)
     table = aggregate(runs)
     print(markdown_table(table))
-    print(f"written {args.out_dir / (NAME + '.md')}")
+    print(f"written {args.out_dir / (output_name(args.tag) + '.md')}")
     return 0 if all(r.get("status") == "drained" for r in runs) else 1
 
 

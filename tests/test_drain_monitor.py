@@ -186,3 +186,43 @@ def test_submit_dry_run_passes_max_offsets_per_trigger_only_when_given():
     assert r.returncode == 0 and "--max-offsets-per-trigger" not in r.stdout.splitlines()[-1]
     r = _bash(["submit.sh", "--dry-run", "-m", "0"])
     assert r.returncode != 0 and "--max-offsets-per-trigger" in r.stderr
+
+
+def test_write_result_upgrades_an_older_csv_header(tmp_path):
+    old_fields = D.CSV_FIELDS[:D.CSV_FIELDS.index("tag")]
+    with (tmp_path / D.CSV_NAME).open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=old_fields)
+        w.writeheader()
+        w.writerow({"run_id": "old", "status": "drained", "executors": 2})
+    meta = D.parse_meta(["executors=2", "cores=2", "job_args=--read-only", "checkpoint_dir=/tmp/ckpt-r",
+                         "allow_local_checkpoint=1", "tag=A"])
+    D.write_result(D.build_result("new", "drained", meta, 300, BATCHES, TOPIC, D.ExecutorTracker(), 30.0), tmp_path)
+    with (tmp_path / D.CSV_NAME).open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert list(rows[0]) == D.CSV_FIELDS and [r["run_id"] for r in rows] == ["old", "new"]
+    assert rows[0]["executors"] == "2" and rows[0]["job_args"] == ""
+    assert (rows[1]["job_args"], rows[1]["checkpoint_dir"], rows[1]["allow_local_checkpoint"], rows[1]["tag"]) == (
+        "--read-only", "/tmp/ckpt-r", "1", "A")
+
+
+@needs_bash
+def test_drain_test_passes_the_experiment_switches():
+    cfg = _config("--run-id", "r7", "-k", "/tmp/ckpt-{run_id}", "--allow-local-checkpoint", "--tag", "A",
+                  "--", "--read-only", "--state-store", "rocksdb")
+    assert cfg["checkpoint_dir"] == "/tmp/ckpt-r7" and cfg["allow_local_checkpoint"] == "1" and cfg["tag"] == "A"
+    assert cfg["job_args"] == "--read-only --state-store rocksdb"
+    cfg = _config()
+    assert (cfg["checkpoint_dir"], cfg["allow_local_checkpoint"], cfg["tag"], cfg["job_args"]) == ("", "0", "", "")
+    r = _bash(["drain_test.sh", "--tag", "a/b"])
+    assert r.returncode != 0 and "--tag" in r.stderr
+
+
+@needs_bash
+def test_submit_refuses_a_local_checkpoint_unless_allowed():
+    r = _bash(["submit.sh", "--dry-run", "-e", "1", "-c", "2", "-k", "/tmp/ckpt-x"])
+    assert r.returncode != 0 and "--allow-local-checkpoint" in r.stderr
+    r = _bash(["submit.sh", "--dry-run", "-e", "1", "-c", "2", "-k", "/tmp/ckpt-x", "--allow-local-checkpoint",
+               "--", "--read-only"])
+    assert r.returncode == 0, r.stderr
+    assert "recovery after a" in r.stderr and "NOT guaranteed" in r.stderr
+    assert "/tmp/ckpt-x/score/source=smd" in r.stdout and r.stdout.splitlines()[-1].rstrip().endswith("--read-only")

@@ -260,3 +260,51 @@ def test_read_telemetry_sets_max_offsets_per_trigger_only_when_given():
             features_job.read_telemetry(spark, cap)
         assert e.value.args[0].get("maxOffsetsPerTrigger") == want
         assert e.value.args[0]["subscribe"] == S.TOPIC_SMD and e.value.args[0]["startingOffsets"] == "earliest"
+
+
+def test_state_store_conf():
+    assert M.state_store_conf("hdfs") == {}
+    conf = M.state_store_conf("rocksdb")
+    assert conf["spark.sql.streaming.stateStore.providerClass"].endswith(".RocksDBStateStoreProvider")
+    assert conf["spark.sql.streaming.stateStore.rocksdb.changelogCheckpointing.enabled"] == "true"
+
+
+def test_experiment_switches_reach_spark(monkeypatch, tmp_path):
+    """--state-store rocksdb sets the SQL confs before the query; --read-only builds no scoring plan;
+    --checkpoint-dir is what --reset deletes (the default checkpoint is left alone)."""
+    from src.streaming import features_job
+
+    (tmp_path / "model.pt").write_bytes(b"")
+    for name, sub in (("AE_DIR", ""), ("OUTPUT_DIR", "out"), ("LATENCY_ROOT", "lat"), ("CHECKPOINT_DIR", "default")):
+        monkeypatch.setattr(M, name, tmp_path / sub if sub else tmp_path)
+    (tmp_path / "default").mkdir()
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    class Stop(Exception):
+        pass
+
+    class FakeSpark:
+        sparkContext = type("SC", (), {"setLogLevel": lambda self, level: None})()
+
+        def __init__(self):
+            self.conf = type("Conf", (), {"set": lambda _, k, v: confs.__setitem__(k, v)})()
+
+    confs: dict = {}
+    calls = []
+    monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: FakeSpark())
+    monkeypatch.setattr(features_job, "read_telemetry", lambda spark, cap=None: "telemetry")
+    monkeypatch.setattr(M, "build_scores", lambda t: (calls.append("build_scores"), (_ for _ in ()).throw(Stop))[1])
+    monkeypatch.setattr(M, "telemetry_rows", lambda t: (calls.append(("rows", t)), (_ for _ in ()).throw(Stop))[1])
+
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka", "--state-store", "rocksdb"])
+    assert calls == ["build_scores"] and "spark.sql.streaming.stateStore.providerClass" in confs
+    calls.clear()
+    confs.clear()
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka", "--read-only", "--reset", "--checkpoint-dir", str(custom)])
+    assert calls == [("rows", "telemetry")] and confs == {}
+    assert not custom.exists() and (tmp_path / "default").exists()
+    with pytest.raises(SystemExit):
+        M.main(["--state-store", "leveldb"])

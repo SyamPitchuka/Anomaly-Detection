@@ -217,3 +217,43 @@ def test_load_run_timeout_with_undrained_result(tmp_path):
     r = E._load_run(p, "r", (1, 2), -15, timed_out=True, timeout=1800)
     assert r["status"] == "failed (timeout after 1800 s, timeout)"
     assert E._load_run(tmp_path / "none.json", "r", (1, 2), 2)["status"] == "failed (exit 2, no result file)"
+
+
+# ---- bottleneck switches (--tag, --job-args, --checkpoint-dir, --allow-local-checkpoint) ------------------
+
+def test_experiment_args_and_output_name():
+    assert E.experiment_args() == [] and E.output_name(None) == "e2_cluster" and E.output_name("A") == "e2_cluster_A"
+    assert E.experiment_args("/tmp/ckpt-{run_id}", True, "B", ["--state-store", "rocksdb"]) == [
+        "-k", "/tmp/ckpt-{run_id}", "--allow-local-checkpoint", "--tag", "B", "--", "--state-store", "rocksdb"]
+
+
+def test_dry_run_passes_the_experiment_switches(capsys):
+    assert E.main(["--dry-run", "--configs", "1x2", "--repeats", "1", "--tag", "A", "--job-args=--read-only",
+                   "--", "-p", "64"]) == 0
+    cmd = capsys.readouterr().out.strip()
+    assert "--run-id e2_A_" in cmd and cmd.endswith("-r 4 -P 32 -p 64 --tag A -- --read-only")
+    assert E.main(["--dry-run", "--configs", "2x2", "--repeats", "1", "--tag", "B2",
+                   "--job-args=--state-store rocksdb"]) == 0
+    assert capsys.readouterr().out.strip().endswith("--tag B2 -- --state-store rocksdb")
+    assert E.main(["--dry-run", "--configs", "2x2", "--repeats", "1", "--checkpoint-dir", "/x/ckpt-{run_id}",
+                   "--allow-local-checkpoint"]) == 0
+    assert capsys.readouterr().out.strip().endswith("-k '/x/ckpt-{run_id}' --allow-local-checkpoint")
+    with pytest.raises(SystemExit):
+        E.main(["--dry-run", "--tag", "a b"])
+
+
+def test_tagged_outputs_and_experiment_line(tmp_path):
+    meta = {"date": "2026-11-17", "repeats": 1, "records": 10, "max_offsets_per_trigger": 5, "weak": False,
+            "tag": "A", "job_args": "--read-only", "checkpoint_dir": "/tmp/ckpt-{run_id}",
+            "allow_local_checkpoint": True}
+    E.write_outputs(RUNS, meta, tmp_path)
+    md = (tmp_path / "e2_cluster_A.md").read_text(encoding="utf-8")
+    assert "(e2_cluster_A.png)" in md and (tmp_path / "e2_cluster_A.json").exists()
+    assert "**Experiment A:** score_job extra args `--read-only`; checkpoint root `/tmp/ckpt-{run_id}`" in md
+    assert not (tmp_path / "e2_cluster.md").exists()
+    assert E.experiment_line({}) == ""
+    # --from-json keeps the saved tag
+    src = tmp_path / "saved.json"
+    src.write_text(json.dumps({"meta": meta, "runs": RUNS}), encoding="utf-8")
+    assert E.main(["--from-json", str(src), "--out-dir", str(tmp_path / "re")]) == 0
+    assert (tmp_path / "re" / "e2_cluster_A.md").exists()
