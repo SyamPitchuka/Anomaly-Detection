@@ -1,0 +1,5393 @@
+{
+  "experiment": "E5b",
+  "run_date": "18 Nov 2026",
+  "config": {
+    "machines": 40,
+    "hours": 48,
+    "clean_hours": 24,
+    "per_type": 10,
+    "seeds": [
+      7,
+      8,
+      9
+    ],
+    "train_from_hours": 72,
+    "e5_threshold": 20.0,
+    "model_dir": "models/ae_alibaba",
+    "types": [
+      "spike",
+      "drift",
+      "break",
+      "corrbreak"
+    ]
+  },
+  "training": {
+    "train_windows": 57600,
+    "clean_windows": 26303,
+    "machines": 40,
+    "epochs_run": 47,
+    "best_epoch": 42,
+    "best_val_loss": 0.0086,
+    "threshold_global": 0.1291,
+    "clean_false_alarms_per_day": 1.5329,
+    "clean_flagged": 140
+  },
+  "summary": {
+    "ae": {
+      "spike": {
+        "recall": {
+          "mean": 0.6333,
+          "min": 0.4,
+          "max": 0.8
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 2.3436,
+          "min": 1.6483,
+          "max": 3.1038
+        },
+        "detected": 19,
+        "events": 30
+      },
+      "drift": {
+        "recall": {
+          "mean": 0.6,
+          "min": 0.5,
+          "max": 0.7
+        },
+        "mean_delay_min": {
+          "mean": 4.6349,
+          "min": 3.3333,
+          "max": 7.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.3429,
+          "min": 0.6425,
+          "max": 1.8387
+        },
+        "detected": 18,
+        "events": 30
+      },
+      "break": {
+        "recall": {
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 0.8123,
+          "min": 0.4988,
+          "max": 1.156
+        },
+        "detected": 30,
+        "events": 30
+      },
+      "corrbreak": {
+        "recall": {
+          "mean": 0.0667,
+          "min": 0.0,
+          "max": 0.1
+        },
+        "mean_delay_min": {
+          "mean": 2.5,
+          "min": 0.0,
+          "max": 5.0
+        },
+        "false_alarms_per_day": {
+          "mean": 0.988,
+          "min": 0.6628,
+          "max": 1.4257
+        },
+        "detected": 2,
+        "events": 30
+      },
+      "all": {
+        "recall": {
+          "mean": 0.575,
+          "min": 0.55,
+          "max": 0.6
+        },
+        "mean_delay_min": {
+          "mean": 1.2396,
+          "min": 0.8333,
+          "max": 1.5217
+        },
+        "false_alarms_per_day": {
+          "mean": 1.3685,
+          "min": 1.2855,
+          "max": 1.4514
+        },
+        "detected": 69,
+        "events": 120
+      }
+    },
+    "tier1_matched": {
+      "spike": {
+        "recall": {
+          "mean": 0.6333,
+          "min": 0.5,
+          "max": 0.7
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.8477,
+          "min": 1.0489,
+          "max": 3.2672
+        },
+        "detected": 19,
+        "events": 30
+      },
+      "drift": {
+        "recall": {
+          "mean": 0.4667,
+          "min": 0.3,
+          "max": 0.7
+        },
+        "mean_delay_min": {
+          "mean": 13.9881,
+          "min": 6.25,
+          "max": 20.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.3461,
+          "min": 0.6425,
+          "max": 1.8913
+        },
+        "detected": 14,
+        "events": 30
+      },
+      "break": {
+        "recall": {
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 0.8594,
+          "min": 0.4954,
+          "max": 1.2515
+        },
+        "detected": 30,
+        "events": 30
+      },
+      "corrbreak": {
+        "recall": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "mean_delay_min": null,
+        "false_alarms_per_day": {
+          "mean": 1.2089,
+          "min": 0.8754,
+          "max": 1.4257
+        },
+        "detected": 0,
+        "events": 30
+      },
+      "all": {
+        "recall": {
+          "mean": 0.525,
+          "min": 0.5,
+          "max": 0.55
+        },
+        "mean_delay_min": {
+          "mean": 3.0635,
+          "min": 1.1905,
+          "max": 5.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.3132,
+          "min": 1.2855,
+          "max": 1.327
+        },
+        "detected": 63,
+        "events": 120
+      }
+    },
+    "tier1_t20": {
+      "spike": {
+        "recall": {
+          "mean": 0.5333,
+          "min": 0.4,
+          "max": 0.7
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.041,
+          "min": 0.4495,
+          "max": 1.7969
+        },
+        "detected": 16,
+        "events": 30
+      },
+      "drift": {
+        "recall": {
+          "mean": 0.4,
+          "min": 0.2,
+          "max": 0.6
+        },
+        "mean_delay_min": {
+          "mean": 13.8889,
+          "min": 10.0,
+          "max": 17.5
+        },
+        "false_alarms_per_day": {
+          "mean": 0.5035,
+          "min": 0.3212,
+          "max": 0.6878
+        },
+        "detected": 12,
+        "events": 30
+      },
+      "break": {
+        "recall": {
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 0.4821,
+          "min": 0.1651,
+          "max": 0.7822
+        },
+        "detected": 30,
+        "events": 30
+      },
+      "corrbreak": {
+        "recall": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "mean_delay_min": null,
+        "false_alarms_per_day": {
+          "mean": 0.5795,
+          "min": 0.3502,
+          "max": 0.8911
+        },
+        "detected": 0,
+        "events": 30
+      },
+      "all": {
+        "recall": {
+          "mean": 0.4833,
+          "min": 0.475,
+          "max": 0.5
+        },
+        "mean_delay_min": {
+          "mean": 2.7325,
+          "min": 1.8421,
+          "max": 4.25
+        },
+        "false_alarms_per_day": {
+          "mean": 0.6497,
+          "min": 0.622,
+          "max": 0.6635
+        },
+        "detected": 58,
+        "events": 120
+      }
+    },
+    "ae_per_machine": {
+      "spike": {
+        "recall": {
+          "mean": 0.6333,
+          "min": 0.4,
+          "max": 0.8
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.9045,
+          "min": 1.4984,
+          "max": 2.287
+        },
+        "detected": 19,
+        "events": 30
+      },
+      "drift": {
+        "recall": {
+          "mean": 0.6,
+          "min": 0.5,
+          "max": 0.7
+        },
+        "mean_delay_min": {
+          "mean": 3.7302,
+          "min": 2.8571,
+          "max": 5.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.2309,
+          "min": 0.8031,
+          "max": 1.7194
+        },
+        "detected": 18,
+        "events": 30
+      },
+      "break": {
+        "recall": {
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0
+        },
+        "mean_delay_min": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "false_alarms_per_day": {
+          "mean": 0.6509,
+          "min": 0.4954,
+          "max": 0.8314
+        },
+        "detected": 30,
+        "events": 30
+      },
+      "corrbreak": {
+        "recall": {
+          "mean": 0.1,
+          "min": 0.0,
+          "max": 0.2
+        },
+        "mean_delay_min": {
+          "mean": 2.5,
+          "min": 0.0,
+          "max": 5.0
+        },
+        "false_alarms_per_day": {
+          "mean": 1.2631,
+          "min": 0.7129,
+          "max": 1.7508
+        },
+        "detected": 3,
+        "events": 30
+      },
+      "all": {
+        "recall": {
+          "mean": 0.5833,
+          "min": 0.55,
+          "max": 0.625
+        },
+        "mean_delay_min": {
+          "mean": 1.0078,
+          "min": 0.8,
+          "max": 1.1364
+        },
+        "false_alarms_per_day": {
+          "mean": 1.2579,
+          "min": 1.2026,
+          "max": 1.327
+        },
+        "detected": 70,
+        "events": 120
+      }
+    },
+    "tier1_matched_threshold": {
+      "mean": 16.5,
+      "min": 16.5,
+      "max": 16.5
+    }
+  },
+  "separation": {
+    "spike": {
+      "n": 30,
+      "median_ratio": 402.0454,
+      "q1_ratio": 18.8992,
+      "q3_ratio": 31546.1746,
+      "median_peak": 0.4979,
+      "median_normal": 0.0021,
+      "ratio_over_5": 24,
+      "over_global": 19,
+      "over_own_threshold": 19
+    },
+    "drift": {
+      "n": 30,
+      "median_ratio": 872.2132,
+      "q1_ratio": 5.8444,
+      "q3_ratio": 2866.839,
+      "median_peak": 1.9609,
+      "median_normal": 0.0023,
+      "ratio_over_5": 24,
+      "over_global": 18,
+      "over_own_threshold": 18
+    },
+    "break": {
+      "n": 30,
+      "median_ratio": 7797.0558,
+      "q1_ratio": 6945.2904,
+      "q3_ratio": 9227.6346,
+      "median_peak": 17.5784,
+      "median_normal": 0.0022,
+      "ratio_over_5": 30,
+      "over_global": 30,
+      "over_own_threshold": 30
+    },
+    "corrbreak": {
+      "n": 30,
+      "median_ratio": 15.9385,
+      "q1_ratio": 6.1094,
+      "q3_ratio": 31.443,
+      "median_peak": 0.0353,
+      "median_normal": 0.002,
+      "ratio_over_5": 24,
+      "over_global": 3,
+      "over_own_threshold": 4
+    }
+  },
+  "seeds": [
+    {
+      "seed": 7,
+      "rows": 409691,
+      "faults": [
+        {
+          "fault_id": "corrbreak-m_20",
+          "type": "corrbreak",
+          "entity_id": "m_20",
+          "metric": "net_in",
+          "start_time": "2026-01-02T01:15:00.000Z",
+          "end_time": "2026-01-02T01:30:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_out",
+            "r": 0.9997,
+            "donor_start": "2026-01-01T11:10:00.000Z",
+            "clean_min": 37.67,
+            "clean_max": 39.09
+          }
+        },
+        {
+          "fault_id": "spike-m_7",
+          "type": "spike",
+          "entity_id": "m_7",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T03:35:00.000Z",
+          "end_time": "2026-01-02T03:40:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_15",
+          "type": "break",
+          "entity_id": "m_15",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:10:00.000Z",
+          "end_time": "2026-01-02T05:25:00.000Z",
+          "n_rows": 84,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_32",
+          "type": "break",
+          "entity_id": "m_32",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:45:00.000Z",
+          "end_time": "2026-01-02T06:00:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "spike-m_25",
+          "type": "spike",
+          "entity_id": "m_25",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:55:00.000Z",
+          "end_time": "2026-01-02T06:00:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_40",
+          "type": "break",
+          "entity_id": "m_40",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:00:00.000Z",
+          "end_time": "2026-01-02T06:15:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_13",
+          "type": "break",
+          "entity_id": "m_13",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:05:00.000Z",
+          "end_time": "2026-01-02T06:20:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_18",
+          "type": "break",
+          "entity_id": "m_18",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:05:00.000Z",
+          "end_time": "2026-01-02T06:20:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "drift-m_24",
+          "type": "drift",
+          "entity_id": "m_24",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T06:20:00.000Z",
+          "end_time": "2026-01-02T06:50:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_2",
+          "type": "spike",
+          "entity_id": "m_2",
+          "metric": "cpu",
+          "start_time": "2026-01-02T06:25:00.000Z",
+          "end_time": "2026-01-02T06:30:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_36",
+          "type": "break",
+          "entity_id": "m_36",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:35:00.000Z",
+          "end_time": "2026-01-02T06:50:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_28",
+          "type": "break",
+          "entity_id": "m_28",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:35:00.000Z",
+          "end_time": "2026-01-02T07:50:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_9",
+          "type": "corrbreak",
+          "entity_id": "m_9",
+          "metric": "cpu",
+          "start_time": "2026-01-02T07:35:00.000Z",
+          "end_time": "2026-01-02T07:50:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "mem",
+            "r": 0.5272,
+            "donor_start": "2026-01-01T20:40:00.000Z",
+            "clean_min": 13.0,
+            "clean_max": 88.0
+          }
+        },
+        {
+          "fault_id": "drift-m_23",
+          "type": "drift",
+          "entity_id": "m_23",
+          "metric": "mem",
+          "start_time": "2026-01-02T08:45:00.000Z",
+          "end_time": "2026-01-02T09:15:00.000Z",
+          "n_rows": 153,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_26",
+          "type": "drift",
+          "entity_id": "m_26",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T09:20:00.000Z",
+          "end_time": "2026-01-02T09:50:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_14",
+          "type": "spike",
+          "entity_id": "m_14",
+          "metric": "cpu",
+          "start_time": "2026-01-02T09:55:00.000Z",
+          "end_time": "2026-01-02T10:00:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_6",
+          "type": "break",
+          "entity_id": "m_6",
+          "metric": "net_in",
+          "start_time": "2026-01-02T10:00:00.000Z",
+          "end_time": "2026-01-02T10:15:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "spike-m_31",
+          "type": "spike",
+          "entity_id": "m_31",
+          "metric": "mem",
+          "start_time": "2026-01-02T10:20:00.000Z",
+          "end_time": "2026-01-02T10:25:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_37",
+          "type": "corrbreak",
+          "entity_id": "m_37",
+          "metric": "net_in",
+          "start_time": "2026-01-02T10:20:00.000Z",
+          "end_time": "2026-01-02T10:35:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_out",
+            "r": 0.9991,
+            "donor_start": "2026-01-01T09:20:00.000Z",
+            "clean_min": 40.23,
+            "clean_max": 41.82
+          }
+        },
+        {
+          "fault_id": "drift-m_22",
+          "type": "drift",
+          "entity_id": "m_22",
+          "metric": "mem",
+          "start_time": "2026-01-02T10:40:00.000Z",
+          "end_time": "2026-01-02T11:10:00.000Z",
+          "n_rows": 163,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_29",
+          "type": "corrbreak",
+          "entity_id": "m_29",
+          "metric": "net_out",
+          "start_time": "2026-01-02T11:00:00.000Z",
+          "end_time": "2026-01-02T11:15:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9986,
+            "donor_start": "2026-01-01T07:25:00.000Z",
+            "clean_min": 34.57,
+            "clean_max": 36.25
+          }
+        },
+        {
+          "fault_id": "drift-m_16",
+          "type": "drift",
+          "entity_id": "m_16",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T11:15:00.000Z",
+          "end_time": "2026-01-02T11:45:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_11",
+          "type": "drift",
+          "entity_id": "m_11",
+          "metric": "net_in",
+          "start_time": "2026-01-02T11:25:00.000Z",
+          "end_time": "2026-01-02T11:55:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_1",
+          "type": "corrbreak",
+          "entity_id": "m_1",
+          "metric": "cpu",
+          "start_time": "2026-01-02T12:15:00.000Z",
+          "end_time": "2026-01-02T12:30:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "disk_io",
+            "r": 0.6578,
+            "donor_start": "2026-01-01T00:25:00.000Z",
+            "clean_min": 7.0,
+            "clean_max": 80.0
+          }
+        },
+        {
+          "fault_id": "break-m_12",
+          "type": "break",
+          "entity_id": "m_12",
+          "metric": "net_in",
+          "start_time": "2026-01-02T13:00:00.000Z",
+          "end_time": "2026-01-02T13:15:00.000Z",
+          "n_rows": 78,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "spike-m_8",
+          "type": "spike",
+          "entity_id": "m_8",
+          "metric": "mem",
+          "start_time": "2026-01-02T13:10:00.000Z",
+          "end_time": "2026-01-02T13:15:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_39",
+          "type": "drift",
+          "entity_id": "m_39",
+          "metric": "net_in",
+          "start_time": "2026-01-02T13:40:00.000Z",
+          "end_time": "2026-01-02T14:10:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_21",
+          "type": "corrbreak",
+          "entity_id": "m_21",
+          "metric": "net_out",
+          "start_time": "2026-01-02T13:55:00.000Z",
+          "end_time": "2026-01-02T14:10:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9978,
+            "donor_start": "2026-01-01T05:00:00.000Z",
+            "clean_min": 31.43,
+            "clean_max": 32.81
+          }
+        },
+        {
+          "fault_id": "spike-m_38",
+          "type": "spike",
+          "entity_id": "m_38",
+          "metric": "net_in",
+          "start_time": "2026-01-02T14:10:00.000Z",
+          "end_time": "2026-01-02T14:15:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_17",
+          "type": "drift",
+          "entity_id": "m_17",
+          "metric": "net_in",
+          "start_time": "2026-01-02T20:40:00.000Z",
+          "end_time": "2026-01-02T21:10:00.000Z",
+          "n_rows": 178,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_3",
+          "type": "corrbreak",
+          "entity_id": "m_3",
+          "metric": "net_in",
+          "start_time": "2026-01-02T20:45:00.000Z",
+          "end_time": "2026-01-02T21:00:00.000Z",
+          "n_rows": 88,
+          "params": {
+            "partner": "net_out",
+            "r": 0.9983,
+            "donor_start": "2026-01-01T04:25:00.000Z",
+            "clean_min": 35.62,
+            "clean_max": 37.02
+          }
+        },
+        {
+          "fault_id": "drift-m_27",
+          "type": "drift",
+          "entity_id": "m_27",
+          "metric": "net_in",
+          "start_time": "2026-01-02T20:55:00.000Z",
+          "end_time": "2026-01-02T21:25:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "break-m_30",
+          "type": "break",
+          "entity_id": "m_30",
+          "metric": "net_in",
+          "start_time": "2026-01-02T21:00:00.000Z",
+          "end_time": "2026-01-02T21:15:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "spike-m_34",
+          "type": "spike",
+          "entity_id": "m_34",
+          "metric": "cpu",
+          "start_time": "2026-01-02T21:00:00.000Z",
+          "end_time": "2026-01-02T21:05:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_19",
+          "type": "corrbreak",
+          "entity_id": "m_19",
+          "metric": "net_out",
+          "start_time": "2026-01-02T21:05:00.000Z",
+          "end_time": "2026-01-02T21:20:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9985,
+            "donor_start": "2026-01-01T07:55:00.000Z",
+            "clean_min": 28.85,
+            "clean_max": 29.97
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_35",
+          "type": "corrbreak",
+          "entity_id": "m_35",
+          "metric": "mem",
+          "start_time": "2026-01-02T21:10:00.000Z",
+          "end_time": "2026-01-02T21:25:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_out",
+            "r": 0.6922,
+            "donor_start": "2026-01-01T07:35:00.000Z",
+            "clean_min": 80.0,
+            "clean_max": 98.0
+          }
+        },
+        {
+          "fault_id": "drift-m_4",
+          "type": "drift",
+          "entity_id": "m_4",
+          "metric": "cpu",
+          "start_time": "2026-01-02T21:20:00.000Z",
+          "end_time": "2026-01-02T21:50:00.000Z",
+          "n_rows": 178,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_5",
+          "type": "spike",
+          "entity_id": "m_5",
+          "metric": "mem",
+          "start_time": "2026-01-02T21:55:00.000Z",
+          "end_time": "2026-01-02T22:00:00.000Z",
+          "n_rows": 29,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_33",
+          "type": "corrbreak",
+          "entity_id": "m_33",
+          "metric": "net_in",
+          "start_time": "2026-01-02T22:45:00.000Z",
+          "end_time": "2026-01-02T23:00:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_out",
+            "r": 0.9994,
+            "donor_start": "2026-01-01T02:30:00.000Z",
+            "clean_min": 19.88,
+            "clean_max": 21.15
+          }
+        },
+        {
+          "fault_id": "spike-m_10",
+          "type": "spike",
+          "entity_id": "m_10",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T23:25:00.000Z",
+          "end_time": "2026-01-02T23:30:00.000Z",
+          "n_rows": 28,
+          "params": {
+            "factor": 3.0
+          }
+        }
+      ],
+      "ae": {
+        "spike": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 3.1038
+        },
+        "drift": {
+          "events": 10,
+          "detected": 6,
+          "recall": 0.6,
+          "mean_delay_min": 3.3333,
+          "median_delay_min": 2.5,
+          "false_alarms_per_day": 0.6425
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.156
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 1,
+          "recall": 0.1,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.8754
+        },
+        "all": {
+          "events": 40,
+          "detected": 24,
+          "recall": 0.6,
+          "mean_delay_min": 0.8333,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.4514
+        }
+      },
+      "ae_per_machine": {
+        "spike": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 2.287
+        },
+        "drift": {
+          "events": 10,
+          "detected": 6,
+          "recall": 0.6,
+          "mean_delay_min": 3.3333,
+          "median_delay_min": 2.5,
+          "false_alarms_per_day": 0.8031
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.4954
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 2,
+          "recall": 0.2,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.7508
+        },
+        "all": {
+          "events": 40,
+          "detected": 25,
+          "recall": 0.625,
+          "mean_delay_min": 0.8,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.327
+        }
+      },
+      "separation": [
+        {
+          "fault_id": "corrbreak-m_20",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.0264,
+          "normal_median": 0.0017,
+          "ratio": 15.8199,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_7",
+          "type": "spike",
+          "metric": "disk_io",
+          "peak": 0.0065,
+          "normal_median": 0.0021,
+          "ratio": 3.1503,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_15",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 17.4724,
+          "normal_median": 0.0028,
+          "ratio": 6212.1701,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_32",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 10.6274,
+          "normal_median": 0.0013,
+          "ratio": 8283.7548,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_25",
+          "type": "spike",
+          "metric": "net_in",
+          "peak": 59.493,
+          "normal_median": 0.0031,
+          "ratio": 19496.1701,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_40",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 21.7828,
+          "normal_median": 0.0036,
+          "ratio": 6105.1697,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_13",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 19.3768,
+          "normal_median": 0.0026,
+          "ratio": 7576.0075,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_18",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 14.3937,
+          "normal_median": 0.0024,
+          "ratio": 5978.8904,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_24",
+          "type": "drift",
+          "metric": "disk_io",
+          "peak": 0.039,
+          "normal_median": 0.0027,
+          "ratio": 14.3894,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_2",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.2884,
+          "normal_median": 0.0017,
+          "ratio": 173.9187,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_36",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 2.214,
+          "normal_median": 0.0019,
+          "ratio": 1171.7019,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_28",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 19.4446,
+          "normal_median": 0.0024,
+          "ratio": 7939.9261,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_9",
+          "type": "corrbreak",
+          "metric": "cpu",
+          "peak": 0.0122,
+          "normal_median": 0.0016,
+          "ratio": 7.4228,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_23",
+          "type": "drift",
+          "metric": "mem",
+          "peak": 3.2592,
+          "normal_median": 0.0026,
+          "ratio": 1277.0077,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_26",
+          "type": "drift",
+          "metric": "disk_io",
+          "peak": 0.0081,
+          "normal_median": 0.0014,
+          "ratio": 5.9496,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_14",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.0576,
+          "normal_median": 0.0032,
+          "ratio": 18.2086,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_6",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 21.9432,
+          "normal_median": 0.0023,
+          "ratio": 9476.599,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_31",
+          "type": "spike",
+          "metric": "mem",
+          "peak": 87.3616,
+          "normal_median": 0.0031,
+          "ratio": 27787.8247,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_37",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.0546,
+          "normal_median": 0.001,
+          "ratio": 53.1448,
+          "over_global": false,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_22",
+          "type": "drift",
+          "metric": "mem",
+          "peak": 5.5142,
+          "normal_median": 0.0026,
+          "ratio": 2087.2846,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_29",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.054,
+          "normal_median": 0.0021,
+          "ratio": 25.4393,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_16",
+          "type": "drift",
+          "metric": "disk_io",
+          "peak": 0.0354,
+          "normal_median": 0.003,
+          "ratio": 11.6862,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_11",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 7.6703,
+          "normal_median": 0.0014,
+          "ratio": 5493.6776,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_1",
+          "type": "corrbreak",
+          "metric": "cpu",
+          "peak": 0.0093,
+          "normal_median": 0.0024,
+          "ratio": 3.9474,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_12",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 1443.9039,
+          "normal_median": 0.001,
+          "ratio": 1386167.2323,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_8",
+          "type": "spike",
+          "metric": "mem",
+          "peak": 43.9258,
+          "normal_median": 0.0018,
+          "ratio": 24486.6001,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_39",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 8.762,
+          "normal_median": 0.0018,
+          "ratio": 4804.1541,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_21",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0854,
+          "normal_median": 0.0016,
+          "ratio": 52.3723,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_38",
+          "type": "spike",
+          "metric": "net_in",
+          "peak": 127.1382,
+          "normal_median": 0.003,
+          "ratio": 42391.9031,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_17",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 9.5213,
+          "normal_median": 0.0028,
+          "ratio": 3388.6034,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_3",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.1545,
+          "normal_median": 0.002,
+          "ratio": 76.8638,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_27",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 7.9169,
+          "normal_median": 0.0023,
+          "ratio": 3386.815,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_30",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 13.2122,
+          "normal_median": 0.0017,
+          "ratio": 7805.4408,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_34",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.4406,
+          "normal_median": 0.0016,
+          "ratio": 271.1283,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_19",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0932,
+          "normal_median": 0.0021,
+          "ratio": 44.1936,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_35",
+          "type": "corrbreak",
+          "metric": "mem",
+          "peak": 0.0031,
+          "normal_median": 0.002,
+          "ratio": 1.5995,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_4",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.0159,
+          "normal_median": 0.002,
+          "ratio": 7.7589,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_5",
+          "type": "spike",
+          "metric": "mem",
+          "peak": 31.0302,
+          "normal_median": 0.0016,
+          "ratio": 18899.1791,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_33",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.1361,
+          "normal_median": 0.0035,
+          "ratio": 39.1707,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_10",
+          "type": "spike",
+          "metric": "disk_io",
+          "peak": 0.0029,
+          "normal_median": 0.0025,
+          "ratio": 1.1652,
+          "over_global": false,
+          "over_own_threshold": false
+        }
+      ],
+      "tier1_matched": {
+        "spike": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 3.2672
+        },
+        "drift": {
+          "events": 10,
+          "detected": 4,
+          "recall": 0.4,
+          "mean_delay_min": 6.25,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 0.6425
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.4954
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 0.8754
+        },
+        "all": {
+          "events": 40,
+          "detected": 21,
+          "recall": 0.525,
+          "mean_delay_min": 1.1905,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.327
+        }
+      },
+      "tier1_matched_threshold": 16.5,
+      "tier1_t20": {
+        "spike": {
+          "events": 10,
+          "detected": 5,
+          "recall": 0.5,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.7969
+        },
+        "drift": {
+          "events": 10,
+          "detected": 4,
+          "recall": 0.4,
+          "mean_delay_min": 10.0,
+          "median_delay_min": 10.0,
+          "false_alarms_per_day": 0.3212
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.1651
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 0.3502
+        },
+        "all": {
+          "events": 40,
+          "detected": 19,
+          "recall": 0.475,
+          "mean_delay_min": 2.1053,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.6635
+        }
+      },
+      "tier1_sweep": [
+        {
+          "threshold": 3.0,
+          "false_alarms_per_day": 179.9326,
+          "all_recall": 0.95
+        },
+        {
+          "threshold": 3.5,
+          "false_alarms_per_day": 139.8324,
+          "all_recall": 0.95
+        },
+        {
+          "threshold": 4.0,
+          "false_alarms_per_day": 109.1456,
+          "all_recall": 0.925
+        },
+        {
+          "threshold": 4.5,
+          "false_alarms_per_day": 77.2562,
+          "all_recall": 0.825
+        },
+        {
+          "threshold": 5.0,
+          "false_alarms_per_day": 60.1296,
+          "all_recall": 0.8
+        },
+        {
+          "threshold": 5.5,
+          "false_alarms_per_day": 44.5788,
+          "all_recall": 0.8
+        },
+        {
+          "threshold": 6.0,
+          "false_alarms_per_day": 36.2851,
+          "all_recall": 0.775
+        },
+        {
+          "threshold": 6.5,
+          "false_alarms_per_day": 27.2449,
+          "all_recall": 0.75
+        },
+        {
+          "threshold": 7.0,
+          "false_alarms_per_day": 21.9369,
+          "all_recall": 0.725
+        },
+        {
+          "threshold": 7.5,
+          "false_alarms_per_day": 16.6704,
+          "all_recall": 0.675
+        },
+        {
+          "threshold": 8.0,
+          "false_alarms_per_day": 12.9797,
+          "all_recall": 0.675
+        },
+        {
+          "threshold": 8.5,
+          "false_alarms_per_day": 11.4039,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 9.0,
+          "false_alarms_per_day": 9.6622,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 9.5,
+          "false_alarms_per_day": 8.1693,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 10.0,
+          "false_alarms_per_day": 6.8838,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 10.5,
+          "false_alarms_per_day": 5.8886,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 11.0,
+          "false_alarms_per_day": 5.1836,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 11.5,
+          "false_alarms_per_day": 4.4371,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 12.0,
+          "false_alarms_per_day": 3.8566,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 12.5,
+          "false_alarms_per_day": 3.1516,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 13.0,
+          "false_alarms_per_day": 2.8613,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 13.5,
+          "false_alarms_per_day": 2.5296,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 14.0,
+          "false_alarms_per_day": 2.2393,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 14.5,
+          "false_alarms_per_day": 1.9905,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 15.0,
+          "false_alarms_per_day": 1.9076,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 15.5,
+          "false_alarms_per_day": 1.7832,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 16.0,
+          "false_alarms_per_day": 1.5758,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 16.5,
+          "false_alarms_per_day": 1.327,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 17.0,
+          "false_alarms_per_day": 1.1611,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 17.5,
+          "false_alarms_per_day": 1.0367,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 18.0,
+          "false_alarms_per_day": 0.9952,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 18.5,
+          "false_alarms_per_day": 0.9952,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 19.0,
+          "false_alarms_per_day": 0.9123,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 19.5,
+          "false_alarms_per_day": 0.7464,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 20.0,
+          "false_alarms_per_day": 0.6635,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 21.0,
+          "false_alarms_per_day": 0.5391,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 22.0,
+          "false_alarms_per_day": 0.3732,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 23.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 24.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 25.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 26.0,
+          "false_alarms_per_day": 0.2073,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 27.0,
+          "false_alarms_per_day": 0.1659,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 28.0,
+          "false_alarms_per_day": 0.1244,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 29.0,
+          "false_alarms_per_day": 0.1244,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 30.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 31.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 32.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 33.0,
+          "false_alarms_per_day": 0.0415,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 34.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 35.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 36.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 37.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 38.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 39.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 40.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 41.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 42.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 43.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 44.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 45.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 46.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 47.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 48.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 49.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 50.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 51.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.35
+        },
+        {
+          "threshold": 52.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 53.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 54.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 55.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 56.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 57.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 58.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 59.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.225
+        },
+        {
+          "threshold": 60.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.225
+        },
+        {
+          "threshold": 65.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.175
+        },
+        {
+          "threshold": 70.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.15
+        },
+        {
+          "threshold": 75.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 80.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 85.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 90.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 95.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.1
+        },
+        {
+          "threshold": 100.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.1
+        },
+        {
+          "threshold": 105.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 110.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 115.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 120.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 125.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 130.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 135.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 140.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 145.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 150.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 155.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 160.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 165.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 170.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 175.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 180.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 185.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 190.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 195.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 200.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        }
+      ],
+      "ae_top3_hit": {
+        "break": {
+          "hits": 10,
+          "of": 10
+        },
+        "spike": {
+          "hits": 7,
+          "of": 7
+        },
+        "drift": {
+          "hits": 6,
+          "of": 6
+        },
+        "corrbreak": {
+          "hits": 1,
+          "of": 1
+        }
+      }
+    },
+    {
+      "seed": 8,
+      "rows": 409691,
+      "faults": [
+        {
+          "fault_id": "drift-m_21",
+          "type": "drift",
+          "entity_id": "m_21",
+          "metric": "mem",
+          "start_time": "2026-01-02T01:25:00.000Z",
+          "end_time": "2026-01-02T01:55:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_29",
+          "type": "spike",
+          "entity_id": "m_29",
+          "metric": "net_in",
+          "start_time": "2026-01-02T01:25:00.000Z",
+          "end_time": "2026-01-02T01:30:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_35",
+          "type": "corrbreak",
+          "entity_id": "m_35",
+          "metric": "mem",
+          "start_time": "2026-01-02T03:50:00.000Z",
+          "end_time": "2026-01-02T04:05:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_out",
+            "r": 0.6922,
+            "donor_start": "2026-01-01T09:05:00.000Z",
+            "clean_min": 80.0,
+            "clean_max": 98.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_9",
+          "type": "corrbreak",
+          "entity_id": "m_9",
+          "metric": "net_out",
+          "start_time": "2026-01-02T04:15:00.000Z",
+          "end_time": "2026-01-02T04:30:00.000Z",
+          "n_rows": 88,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9981,
+            "donor_start": "2026-01-01T07:45:00.000Z",
+            "clean_min": 34.6,
+            "clean_max": 35.69
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_39",
+          "type": "corrbreak",
+          "entity_id": "m_39",
+          "metric": "mem",
+          "start_time": "2026-01-02T05:10:00.000Z",
+          "end_time": "2026-01-02T05:25:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.5655,
+            "donor_start": "2026-01-01T01:15:00.000Z",
+            "clean_min": 70.0,
+            "clean_max": 98.0
+          }
+        },
+        {
+          "fault_id": "drift-m_15",
+          "type": "drift",
+          "entity_id": "m_15",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T05:15:00.000Z",
+          "end_time": "2026-01-02T05:45:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "break-m_22",
+          "type": "break",
+          "entity_id": "m_22",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:45:00.000Z",
+          "end_time": "2026-01-02T06:00:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "drift-m_7",
+          "type": "drift",
+          "entity_id": "m_7",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:50:00.000Z",
+          "end_time": "2026-01-02T06:20:00.000Z",
+          "n_rows": 164,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_8",
+          "type": "drift",
+          "entity_id": "m_8",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:05:00.000Z",
+          "end_time": "2026-01-02T06:35:00.000Z",
+          "n_rows": 150,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_3",
+          "type": "spike",
+          "entity_id": "m_3",
+          "metric": "cpu",
+          "start_time": "2026-01-02T06:15:00.000Z",
+          "end_time": "2026-01-02T06:20:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_37",
+          "type": "corrbreak",
+          "entity_id": "m_37",
+          "metric": "cpu",
+          "start_time": "2026-01-02T06:15:00.000Z",
+          "end_time": "2026-01-02T06:30:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "disk_io",
+            "r": 0.568,
+            "donor_start": "2026-01-01T03:00:00.000Z",
+            "clean_min": 14.0,
+            "clean_max": 81.0
+          }
+        },
+        {
+          "fault_id": "spike-m_5",
+          "type": "spike",
+          "entity_id": "m_5",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T06:20:00.000Z",
+          "end_time": "2026-01-02T06:25:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_14",
+          "type": "break",
+          "entity_id": "m_14",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:30:00.000Z",
+          "end_time": "2026-01-02T06:45:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_23",
+          "type": "break",
+          "entity_id": "m_23",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:35:00.000Z",
+          "end_time": "2026-01-02T06:50:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_32",
+          "type": "break",
+          "entity_id": "m_32",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:35:00.000Z",
+          "end_time": "2026-01-02T06:50:00.000Z",
+          "n_rows": 75,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_38",
+          "type": "corrbreak",
+          "entity_id": "m_38",
+          "metric": "net_out",
+          "start_time": "2026-01-02T07:00:00.000Z",
+          "end_time": "2026-01-02T07:15:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.999,
+            "donor_start": "2026-01-01T09:40:00.000Z",
+            "clean_min": 27.41,
+            "clean_max": 28.38
+          }
+        },
+        {
+          "fault_id": "break-m_17",
+          "type": "break",
+          "entity_id": "m_17",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:50:00.000Z",
+          "end_time": "2026-01-02T08:05:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_28",
+          "type": "corrbreak",
+          "entity_id": "m_28",
+          "metric": "net_out",
+          "start_time": "2026-01-02T07:50:00.000Z",
+          "end_time": "2026-01-02T08:05:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.998,
+            "donor_start": "2026-01-01T04:15:00.000Z",
+            "clean_min": 25.18,
+            "clean_max": 26.4
+          }
+        },
+        {
+          "fault_id": "break-m_31",
+          "type": "break",
+          "entity_id": "m_31",
+          "metric": "net_in",
+          "start_time": "2026-01-02T08:00:00.000Z",
+          "end_time": "2026-01-02T08:15:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_11",
+          "type": "break",
+          "entity_id": "m_11",
+          "metric": "net_in",
+          "start_time": "2026-01-02T08:15:00.000Z",
+          "end_time": "2026-01-02T08:30:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_40",
+          "type": "corrbreak",
+          "entity_id": "m_40",
+          "metric": "net_out",
+          "start_time": "2026-01-02T09:20:00.000Z",
+          "end_time": "2026-01-02T09:35:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.998,
+            "donor_start": "2026-01-01T02:30:00.000Z",
+            "clean_min": 25.56,
+            "clean_max": 26.37
+          }
+        },
+        {
+          "fault_id": "break-m_20",
+          "type": "break",
+          "entity_id": "m_20",
+          "metric": "net_in",
+          "start_time": "2026-01-02T09:30:00.000Z",
+          "end_time": "2026-01-02T09:45:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_6",
+          "type": "break",
+          "entity_id": "m_6",
+          "metric": "net_in",
+          "start_time": "2026-01-02T09:40:00.000Z",
+          "end_time": "2026-01-02T09:55:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "drift-m_16",
+          "type": "drift",
+          "entity_id": "m_16",
+          "metric": "net_out",
+          "start_time": "2026-01-02T10:05:00.000Z",
+          "end_time": "2026-01-02T10:35:00.000Z",
+          "n_rows": 178,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_1",
+          "type": "spike",
+          "entity_id": "m_1",
+          "metric": "net_out",
+          "start_time": "2026-01-02T10:25:00.000Z",
+          "end_time": "2026-01-02T10:30:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_4",
+          "type": "drift",
+          "entity_id": "m_4",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T11:00:00.000Z",
+          "end_time": "2026-01-02T11:30:00.000Z",
+          "n_rows": 165,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_18",
+          "type": "spike",
+          "entity_id": "m_18",
+          "metric": "cpu",
+          "start_time": "2026-01-02T12:00:00.000Z",
+          "end_time": "2026-01-02T12:05:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_10",
+          "type": "corrbreak",
+          "entity_id": "m_10",
+          "metric": "net_out",
+          "start_time": "2026-01-02T12:15:00.000Z",
+          "end_time": "2026-01-02T12:30:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9977,
+            "donor_start": "2026-01-01T12:20:00.000Z",
+            "clean_min": 27.9,
+            "clean_max": 28.75
+          }
+        },
+        {
+          "fault_id": "spike-m_12",
+          "type": "spike",
+          "entity_id": "m_12",
+          "metric": "cpu",
+          "start_time": "2026-01-02T12:25:00.000Z",
+          "end_time": "2026-01-02T12:30:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_36",
+          "type": "drift",
+          "entity_id": "m_36",
+          "metric": "net_out",
+          "start_time": "2026-01-02T12:50:00.000Z",
+          "end_time": "2026-01-02T13:20:00.000Z",
+          "n_rows": 150,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_33",
+          "type": "drift",
+          "entity_id": "m_33",
+          "metric": "net_in",
+          "start_time": "2026-01-02T14:10:00.000Z",
+          "end_time": "2026-01-02T14:40:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_24",
+          "type": "corrbreak",
+          "entity_id": "m_24",
+          "metric": "mem",
+          "start_time": "2026-01-02T14:30:00.000Z",
+          "end_time": "2026-01-02T14:45:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_in",
+            "r": 0.6091,
+            "donor_start": "2026-01-01T15:35:00.000Z",
+            "clean_min": 83.0,
+            "clean_max": 98.0
+          }
+        },
+        {
+          "fault_id": "spike-m_34",
+          "type": "spike",
+          "entity_id": "m_34",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T14:30:00.000Z",
+          "end_time": "2026-01-02T14:35:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_13",
+          "type": "drift",
+          "entity_id": "m_13",
+          "metric": "net_out",
+          "start_time": "2026-01-02T20:55:00.000Z",
+          "end_time": "2026-01-02T21:25:00.000Z",
+          "n_rows": 177,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_2",
+          "type": "spike",
+          "entity_id": "m_2",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T21:05:00.000Z",
+          "end_time": "2026-01-02T21:10:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "spike-m_26",
+          "type": "spike",
+          "entity_id": "m_26",
+          "metric": "cpu",
+          "start_time": "2026-01-02T21:10:00.000Z",
+          "end_time": "2026-01-02T21:15:00.000Z",
+          "n_rows": 29,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_30",
+          "type": "break",
+          "entity_id": "m_30",
+          "metric": "net_in",
+          "start_time": "2026-01-02T21:10:00.000Z",
+          "end_time": "2026-01-02T21:25:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_25",
+          "type": "corrbreak",
+          "entity_id": "m_25",
+          "metric": "net_in",
+          "start_time": "2026-01-02T21:25:00.000Z",
+          "end_time": "2026-01-02T21:40:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_out",
+            "r": 0.9987,
+            "donor_start": "2026-01-01T10:15:00.000Z",
+            "clean_min": 26.6,
+            "clean_max": 28.0
+          }
+        },
+        {
+          "fault_id": "drift-m_27",
+          "type": "drift",
+          "entity_id": "m_27",
+          "metric": "cpu",
+          "start_time": "2026-01-02T23:10:00.000Z",
+          "end_time": "2026-01-02T23:40:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_19",
+          "type": "spike",
+          "entity_id": "m_19",
+          "metric": "cpu",
+          "start_time": "2026-01-02T23:20:00.000Z",
+          "end_time": "2026-01-02T23:25:00.000Z",
+          "n_rows": 29,
+          "params": {
+            "factor": 3.0
+          }
+        }
+      ],
+      "ae": {
+        "spike": {
+          "events": 10,
+          "detected": 4,
+          "recall": 0.4,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 2.2788
+        },
+        "drift": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 3.5714,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 1.8387
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.7822
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 1,
+          "recall": 0.1,
+          "mean_delay_min": 5.0,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 0.6628
+        },
+        "all": {
+          "events": 40,
+          "detected": 22,
+          "recall": 0.55,
+          "mean_delay_min": 1.3636,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.3685
+        }
+      },
+      "ae_per_machine": {
+        "spike": {
+          "events": 10,
+          "detected": 4,
+          "recall": 0.4,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.9282
+        },
+        "drift": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 2.8571,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 1.1701
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.6257
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 1,
+          "recall": 0.1,
+          "mean_delay_min": 5.0,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 1.3257
+        },
+        "all": {
+          "events": 40,
+          "detected": 22,
+          "recall": 0.55,
+          "mean_delay_min": 1.1364,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.2441
+        }
+      },
+      "separation": [
+        {
+          "fault_id": "drift-m_21",
+          "type": "drift",
+          "metric": "mem",
+          "peak": 2.5236,
+          "normal_median": 0.0016,
+          "ratio": 1548.2883,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_29",
+          "type": "spike",
+          "metric": "net_in",
+          "peak": 89.7438,
+          "normal_median": 0.0021,
+          "ratio": 42300.2193,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_35",
+          "type": "corrbreak",
+          "metric": "mem",
+          "peak": 0.0012,
+          "normal_median": 0.002,
+          "ratio": 0.6337,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_9",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.2362,
+          "normal_median": 0.0016,
+          "ratio": 143.5296,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_39",
+          "type": "corrbreak",
+          "metric": "mem",
+          "peak": 0.0093,
+          "normal_median": 0.0018,
+          "ratio": 5.1034,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_15",
+          "type": "drift",
+          "metric": "disk_io",
+          "peak": 0.0108,
+          "normal_median": 0.0028,
+          "ratio": 3.8544,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_22",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 22.5976,
+          "normal_median": 0.0026,
+          "ratio": 8553.8384,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_7",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 6.229,
+          "normal_median": 0.0021,
+          "ratio": 3036.6636,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_8",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 7.627,
+          "normal_median": 0.0018,
+          "ratio": 4251.7173,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_3",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.3252,
+          "normal_median": 0.002,
+          "ratio": 161.7664,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_37",
+          "type": "corrbreak",
+          "metric": "cpu",
+          "peak": 0.0009,
+          "normal_median": 0.001,
+          "ratio": 0.9229,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_5",
+          "type": "spike",
+          "metric": "disk_io",
+          "peak": 0.0021,
+          "normal_median": 0.0016,
+          "ratio": 1.3008,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_14",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 19.7987,
+          "normal_median": 0.0032,
+          "ratio": 6263.9488,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_23",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 18.5907,
+          "normal_median": 0.0026,
+          "ratio": 7284.0588,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_32",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 10.7018,
+          "normal_median": 0.0013,
+          "ratio": 8341.6938,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_38",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0362,
+          "normal_median": 0.003,
+          "ratio": 12.0793,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_17",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 21.0962,
+          "normal_median": 0.0028,
+          "ratio": 7508.0706,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_28",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0683,
+          "normal_median": 0.0024,
+          "ratio": 27.8789,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_31",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 21.6912,
+          "normal_median": 0.0031,
+          "ratio": 6899.5171,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_11",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 17.2977,
+          "normal_median": 0.0014,
+          "ratio": 12389.1711,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_40",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0604,
+          "normal_median": 0.0036,
+          "ratio": 16.927,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_20",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 17.6843,
+          "normal_median": 0.0017,
+          "ratio": 10597.2687,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_6",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 21.8868,
+          "normal_median": 0.0023,
+          "ratio": 9452.2334,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_16",
+          "type": "drift",
+          "metric": "net_out",
+          "peak": 7.1482,
+          "normal_median": 0.003,
+          "ratio": 2357.3653,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_1",
+          "type": "spike",
+          "metric": "net_out",
+          "peak": 89.0029,
+          "normal_median": 0.0024,
+          "ratio": 37669.3747,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_4",
+          "type": "drift",
+          "metric": "disk_io",
+          "peak": 0.0045,
+          "normal_median": 0.002,
+          "ratio": 2.1769,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_18",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.03,
+          "normal_median": 0.0024,
+          "ratio": 12.4407,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_10",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0307,
+          "normal_median": 0.0025,
+          "ratio": 12.2361,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_12",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.5552,
+          "normal_median": 0.001,
+          "ratio": 532.9626,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_36",
+          "type": "drift",
+          "metric": "net_out",
+          "peak": 0.9078,
+          "normal_median": 0.0019,
+          "ratio": 480.4117,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_33",
+          "type": "drift",
+          "metric": "net_in",
+          "peak": 3.1016,
+          "normal_median": 0.0035,
+          "ratio": 892.7746,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_24",
+          "type": "corrbreak",
+          "metric": "mem",
+          "peak": 0.0015,
+          "normal_median": 0.0027,
+          "ratio": 0.5577,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_34",
+          "type": "spike",
+          "metric": "disk_io",
+          "peak": 0.0027,
+          "normal_median": 0.0016,
+          "ratio": 1.6424,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_13",
+          "type": "drift",
+          "metric": "net_out",
+          "peak": 9.0896,
+          "normal_median": 0.0026,
+          "ratio": 3553.873,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_2",
+          "type": "spike",
+          "metric": "disk_io",
+          "peak": 0.0062,
+          "normal_median": 0.0017,
+          "ratio": 3.7526,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_26",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.0608,
+          "normal_median": 0.0014,
+          "ratio": 44.7726,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_30",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 13.2073,
+          "normal_median": 0.0017,
+          "ratio": 7802.5252,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_25",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.0996,
+          "normal_median": 0.0031,
+          "ratio": 32.631,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_27",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.0059,
+          "normal_median": 0.0023,
+          "ratio": 2.5044,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_19",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.0442,
+          "normal_median": 0.0021,
+          "ratio": 20.9711,
+          "over_global": false,
+          "over_own_threshold": false
+        }
+      ],
+      "tier1_matched": {
+        "spike": {
+          "events": 10,
+          "detected": 5,
+          "recall": 0.5,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.227
+        },
+        "drift": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 15.7143,
+          "median_delay_min": 15.0,
+          "false_alarms_per_day": 1.5044
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.2515
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 1.3257
+        },
+        "all": {
+          "events": 40,
+          "detected": 22,
+          "recall": 0.55,
+          "mean_delay_min": 5.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.327
+        }
+      },
+      "tier1_matched_threshold": 16.5,
+      "tier1_t20": {
+        "spike": {
+          "events": 10,
+          "detected": 4,
+          "recall": 0.4,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.8764
+        },
+        "drift": {
+          "events": 10,
+          "detected": 6,
+          "recall": 0.6,
+          "mean_delay_min": 14.1667,
+          "median_delay_min": 15.0,
+          "false_alarms_per_day": 0.5015
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.7822
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 0.4971
+        },
+        "all": {
+          "events": 40,
+          "detected": 20,
+          "recall": 0.5,
+          "mean_delay_min": 4.25,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.6635
+        }
+      },
+      "tier1_sweep": [
+        {
+          "threshold": 3.0,
+          "false_alarms_per_day": 180.4717,
+          "all_recall": 0.95
+        },
+        {
+          "threshold": 3.5,
+          "false_alarms_per_day": 140.9106,
+          "all_recall": 0.925
+        },
+        {
+          "threshold": 4.0,
+          "false_alarms_per_day": 109.7676,
+          "all_recall": 0.85
+        },
+        {
+          "threshold": 4.5,
+          "false_alarms_per_day": 77.6294,
+          "all_recall": 0.8
+        },
+        {
+          "threshold": 5.0,
+          "false_alarms_per_day": 60.4613,
+          "all_recall": 0.8
+        },
+        {
+          "threshold": 5.5,
+          "false_alarms_per_day": 44.8691,
+          "all_recall": 0.8
+        },
+        {
+          "threshold": 6.0,
+          "false_alarms_per_day": 36.4924,
+          "all_recall": 0.775
+        },
+        {
+          "threshold": 6.5,
+          "false_alarms_per_day": 27.5352,
+          "all_recall": 0.75
+        },
+        {
+          "threshold": 7.0,
+          "false_alarms_per_day": 22.0613,
+          "all_recall": 0.75
+        },
+        {
+          "threshold": 7.5,
+          "false_alarms_per_day": 16.5875,
+          "all_recall": 0.7
+        },
+        {
+          "threshold": 8.0,
+          "false_alarms_per_day": 12.8553,
+          "all_recall": 0.7
+        },
+        {
+          "threshold": 8.5,
+          "false_alarms_per_day": 11.2795,
+          "all_recall": 0.7
+        },
+        {
+          "threshold": 9.0,
+          "false_alarms_per_day": 9.4963,
+          "all_recall": 0.7
+        },
+        {
+          "threshold": 9.5,
+          "false_alarms_per_day": 8.0864,
+          "all_recall": 0.7
+        },
+        {
+          "threshold": 10.0,
+          "false_alarms_per_day": 6.8423,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 10.5,
+          "false_alarms_per_day": 5.8056,
+          "all_recall": 0.625
+        },
+        {
+          "threshold": 11.0,
+          "false_alarms_per_day": 5.1006,
+          "all_recall": 0.625
+        },
+        {
+          "threshold": 11.5,
+          "false_alarms_per_day": 4.3127,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 12.0,
+          "false_alarms_per_day": 3.7322,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 12.5,
+          "false_alarms_per_day": 3.0272,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 13.0,
+          "false_alarms_per_day": 2.7369,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 13.5,
+          "false_alarms_per_day": 2.4467,
+          "all_recall": 0.6
+        },
+        {
+          "threshold": 14.0,
+          "false_alarms_per_day": 2.1564,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 14.5,
+          "false_alarms_per_day": 1.9076,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 15.0,
+          "false_alarms_per_day": 1.8246,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 15.5,
+          "false_alarms_per_day": 1.7002,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 16.0,
+          "false_alarms_per_day": 1.5758,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 16.5,
+          "false_alarms_per_day": 1.327,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 17.0,
+          "false_alarms_per_day": 1.1611,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 17.5,
+          "false_alarms_per_day": 1.0367,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 18.0,
+          "false_alarms_per_day": 0.9952,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 18.5,
+          "false_alarms_per_day": 0.9952,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 19.0,
+          "false_alarms_per_day": 0.9123,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 19.5,
+          "false_alarms_per_day": 0.7464,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 20.0,
+          "false_alarms_per_day": 0.6635,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 21.0,
+          "false_alarms_per_day": 0.5391,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 22.0,
+          "false_alarms_per_day": 0.3732,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 23.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 24.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 25.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 26.0,
+          "false_alarms_per_day": 0.2073,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 27.0,
+          "false_alarms_per_day": 0.1659,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 28.0,
+          "false_alarms_per_day": 0.1244,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 29.0,
+          "false_alarms_per_day": 0.1244,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 30.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 31.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.375
+        },
+        {
+          "threshold": 32.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.375
+        },
+        {
+          "threshold": 33.0,
+          "false_alarms_per_day": 0.0415,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 34.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 35.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 36.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 37.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 38.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 39.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 40.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 41.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 42.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 43.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 44.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 45.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 46.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 47.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 48.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 49.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 50.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 51.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 52.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 53.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 54.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 55.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 56.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 57.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 58.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 59.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 60.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.225
+        },
+        {
+          "threshold": 65.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.175
+        },
+        {
+          "threshold": 70.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.175
+        },
+        {
+          "threshold": 75.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 80.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 85.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 90.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 95.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 100.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 105.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 110.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 115.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 120.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 125.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 130.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 135.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.05
+        },
+        {
+          "threshold": 140.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.025
+        },
+        {
+          "threshold": 145.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 150.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 155.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 160.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 165.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 170.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 175.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 180.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 185.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 190.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 195.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        },
+        {
+          "threshold": 200.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.0
+        }
+      ],
+      "ae_top3_hit": {
+        "drift": {
+          "hits": 7,
+          "of": 7
+        },
+        "spike": {
+          "hits": 4,
+          "of": 4
+        },
+        "corrbreak": {
+          "hits": 1,
+          "of": 1
+        },
+        "break": {
+          "hits": 10,
+          "of": 10
+        }
+      }
+    },
+    {
+      "seed": 9,
+      "rows": 409691,
+      "faults": [
+        {
+          "fault_id": "corrbreak-m_22",
+          "type": "corrbreak",
+          "entity_id": "m_22",
+          "metric": "net_out",
+          "start_time": "2026-01-02T00:00:00.000Z",
+          "end_time": "2026-01-02T00:15:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9981,
+            "donor_start": "2026-01-01T13:10:00.000Z",
+            "clean_min": 31.24,
+            "clean_max": 32.36
+          }
+        },
+        {
+          "fault_id": "drift-m_10",
+          "type": "drift",
+          "entity_id": "m_10",
+          "metric": "cpu",
+          "start_time": "2026-01-02T00:10:00.000Z",
+          "end_time": "2026-01-02T00:40:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_13",
+          "type": "spike",
+          "entity_id": "m_13",
+          "metric": "net_in",
+          "start_time": "2026-01-02T02:00:00.000Z",
+          "end_time": "2026-01-02T02:05:00.000Z",
+          "n_rows": 29,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "spike-m_23",
+          "type": "spike",
+          "entity_id": "m_23",
+          "metric": "mem",
+          "start_time": "2026-01-02T02:05:00.000Z",
+          "end_time": "2026-01-02T02:10:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_7",
+          "type": "corrbreak",
+          "entity_id": "m_7",
+          "metric": "net_out",
+          "start_time": "2026-01-02T02:30:00.000Z",
+          "end_time": "2026-01-02T02:45:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9979,
+            "donor_start": "2026-01-01T08:50:00.000Z",
+            "clean_min": 25.83,
+            "clean_max": 27.05
+          }
+        },
+        {
+          "fault_id": "drift-m_19",
+          "type": "drift",
+          "entity_id": "m_19",
+          "metric": "disk_io",
+          "start_time": "2026-01-02T02:40:00.000Z",
+          "end_time": "2026-01-02T03:10:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_6",
+          "type": "spike",
+          "entity_id": "m_6",
+          "metric": "cpu",
+          "start_time": "2026-01-02T02:55:00.000Z",
+          "end_time": "2026-01-02T03:00:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_16",
+          "type": "corrbreak",
+          "entity_id": "m_16",
+          "metric": "net_out",
+          "start_time": "2026-01-02T03:30:00.000Z",
+          "end_time": "2026-01-02T03:45:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9981,
+            "donor_start": "2026-01-01T11:00:00.000Z",
+            "clean_min": 31.39,
+            "clean_max": 32.75
+          }
+        },
+        {
+          "fault_id": "spike-m_14",
+          "type": "spike",
+          "entity_id": "m_14",
+          "metric": "net_out",
+          "start_time": "2026-01-02T05:20:00.000Z",
+          "end_time": "2026-01-02T05:25:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_25",
+          "type": "break",
+          "entity_id": "m_25",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:20:00.000Z",
+          "end_time": "2026-01-02T05:35:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_15",
+          "type": "corrbreak",
+          "entity_id": "m_15",
+          "metric": "mem",
+          "start_time": "2026-01-02T05:30:00.000Z",
+          "end_time": "2026-01-02T05:45:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "net_out",
+            "r": 0.6538,
+            "donor_start": "2026-01-01T08:50:00.000Z",
+            "clean_min": 76.0,
+            "clean_max": 98.0
+          }
+        },
+        {
+          "fault_id": "break-m_1",
+          "type": "break",
+          "entity_id": "m_1",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:40:00.000Z",
+          "end_time": "2026-01-02T05:55:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_9",
+          "type": "break",
+          "entity_id": "m_9",
+          "metric": "net_in",
+          "start_time": "2026-01-02T05:50:00.000Z",
+          "end_time": "2026-01-02T06:05:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_40",
+          "type": "corrbreak",
+          "entity_id": "m_40",
+          "metric": "net_in",
+          "start_time": "2026-01-02T06:35:00.000Z",
+          "end_time": "2026-01-02T06:50:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "partner": "net_out",
+            "r": 0.998,
+            "donor_start": "2026-01-01T02:30:00.000Z",
+            "clean_min": 35.05,
+            "clean_max": 36.31
+          }
+        },
+        {
+          "fault_id": "spike-m_11",
+          "type": "spike",
+          "entity_id": "m_11",
+          "metric": "mem",
+          "start_time": "2026-01-02T06:45:00.000Z",
+          "end_time": "2026-01-02T06:50:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_2",
+          "type": "break",
+          "entity_id": "m_2",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:25:00.000Z",
+          "end_time": "2026-01-02T07:40:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_17",
+          "type": "break",
+          "entity_id": "m_17",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:30:00.000Z",
+          "end_time": "2026-01-02T07:45:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_35",
+          "type": "break",
+          "entity_id": "m_35",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:40:00.000Z",
+          "end_time": "2026-01-02T07:55:00.000Z",
+          "n_rows": 88,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_39",
+          "type": "break",
+          "entity_id": "m_39",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:40:00.000Z",
+          "end_time": "2026-01-02T07:55:00.000Z",
+          "n_rows": 90,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_36",
+          "type": "break",
+          "entity_id": "m_36",
+          "metric": "net_in",
+          "start_time": "2026-01-02T07:50:00.000Z",
+          "end_time": "2026-01-02T08:05:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "spike-m_12",
+          "type": "spike",
+          "entity_id": "m_12",
+          "metric": "net_out",
+          "start_time": "2026-01-02T08:25:00.000Z",
+          "end_time": "2026-01-02T08:30:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "break-m_30",
+          "type": "break",
+          "entity_id": "m_30",
+          "metric": "net_in",
+          "start_time": "2026-01-02T08:40:00.000Z",
+          "end_time": "2026-01-02T08:55:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "break-m_29",
+          "type": "break",
+          "entity_id": "m_29",
+          "metric": "net_in",
+          "start_time": "2026-01-02T08:45:00.000Z",
+          "end_time": "2026-01-02T09:00:00.000Z",
+          "n_rows": 75,
+          "params": {
+            "factor": 0.1,
+            "cpu": "unchanged, high"
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_32",
+          "type": "corrbreak",
+          "entity_id": "m_32",
+          "metric": "cpu",
+          "start_time": "2026-01-02T08:55:00.000Z",
+          "end_time": "2026-01-02T09:10:00.000Z",
+          "n_rows": 75,
+          "params": {
+            "partner": "disk_io",
+            "r": 0.5332,
+            "donor_start": "2026-01-01T21:45:00.000Z",
+            "clean_min": 15.0,
+            "clean_max": 85.0
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_20",
+          "type": "corrbreak",
+          "entity_id": "m_20",
+          "metric": "net_in",
+          "start_time": "2026-01-02T09:45:00.000Z",
+          "end_time": "2026-01-02T10:00:00.000Z",
+          "n_rows": 73,
+          "params": {
+            "partner": "net_out",
+            "r": 0.9997,
+            "donor_start": "2026-01-01T15:10:00.000Z",
+            "clean_min": 37.67,
+            "clean_max": 39.09
+          }
+        },
+        {
+          "fault_id": "spike-m_31",
+          "type": "spike",
+          "entity_id": "m_31",
+          "metric": "cpu",
+          "start_time": "2026-01-02T10:10:00.000Z",
+          "end_time": "2026-01-02T10:15:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "spike-m_37",
+          "type": "spike",
+          "entity_id": "m_37",
+          "metric": "net_out",
+          "start_time": "2026-01-02T11:05:00.000Z",
+          "end_time": "2026-01-02T11:10:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_38",
+          "type": "drift",
+          "entity_id": "m_38",
+          "metric": "mem",
+          "start_time": "2026-01-02T11:20:00.000Z",
+          "end_time": "2026-01-02T11:50:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_34",
+          "type": "drift",
+          "entity_id": "m_34",
+          "metric": "cpu",
+          "start_time": "2026-01-02T12:00:00.000Z",
+          "end_time": "2026-01-02T12:30:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_18",
+          "type": "spike",
+          "entity_id": "m_18",
+          "metric": "net_in",
+          "start_time": "2026-01-02T12:25:00.000Z",
+          "end_time": "2026-01-02T12:30:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_33",
+          "type": "drift",
+          "entity_id": "m_33",
+          "metric": "mem",
+          "start_time": "2026-01-02T14:10:00.000Z",
+          "end_time": "2026-01-02T14:40:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_4",
+          "type": "drift",
+          "entity_id": "m_4",
+          "metric": "cpu",
+          "start_time": "2026-01-02T22:00:00.000Z",
+          "end_time": "2026-01-02T22:30:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_3",
+          "type": "corrbreak",
+          "entity_id": "m_3",
+          "metric": "net_out",
+          "start_time": "2026-01-02T22:30:00.000Z",
+          "end_time": "2026-01-02T22:45:00.000Z",
+          "n_rows": 86,
+          "params": {
+            "partner": "net_in",
+            "r": 0.9983,
+            "donor_start": "2026-01-01T07:00:00.000Z",
+            "clean_min": 29.87,
+            "clean_max": 31.2
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_26",
+          "type": "corrbreak",
+          "entity_id": "m_26",
+          "metric": "cpu",
+          "start_time": "2026-01-02T22:35:00.000Z",
+          "end_time": "2026-01-02T22:50:00.000Z",
+          "n_rows": 89,
+          "params": {
+            "partner": "disk_io",
+            "r": 0.6592,
+            "donor_start": "2026-01-01T12:40:00.000Z",
+            "clean_min": 14.0,
+            "clean_max": 87.0
+          }
+        },
+        {
+          "fault_id": "drift-m_27",
+          "type": "drift",
+          "entity_id": "m_27",
+          "metric": "net_out",
+          "start_time": "2026-01-02T22:35:00.000Z",
+          "end_time": "2026-01-02T23:05:00.000Z",
+          "n_rows": 179,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "drift-m_21",
+          "type": "drift",
+          "entity_id": "m_21",
+          "metric": "cpu",
+          "start_time": "2026-01-02T22:40:00.000Z",
+          "end_time": "2026-01-02T23:10:00.000Z",
+          "n_rows": 180,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "spike-m_28",
+          "type": "spike",
+          "entity_id": "m_28",
+          "metric": "cpu",
+          "start_time": "2026-01-02T22:45:00.000Z",
+          "end_time": "2026-01-02T22:50:00.000Z",
+          "n_rows": 30,
+          "params": {
+            "factor": 3.0
+          }
+        },
+        {
+          "fault_id": "drift-m_5",
+          "type": "drift",
+          "entity_id": "m_5",
+          "metric": "mem",
+          "start_time": "2026-01-02T22:55:00.000Z",
+          "end_time": "2026-01-02T23:25:00.000Z",
+          "n_rows": 176,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        },
+        {
+          "fault_id": "corrbreak-m_8",
+          "type": "corrbreak",
+          "entity_id": "m_8",
+          "metric": "cpu",
+          "start_time": "2026-01-02T23:05:00.000Z",
+          "end_time": "2026-01-02T23:20:00.000Z",
+          "n_rows": 86,
+          "params": {
+            "partner": "disk_io",
+            "r": 0.5154,
+            "donor_start": "2026-01-01T05:05:00.000Z",
+            "clean_min": 19.0,
+            "clean_max": 87.0
+          }
+        },
+        {
+          "fault_id": "drift-m_24",
+          "type": "drift",
+          "entity_id": "m_24",
+          "metric": "cpu",
+          "start_time": "2026-01-02T23:20:00.000Z",
+          "end_time": "2026-01-02T23:50:00.000Z",
+          "n_rows": 175,
+          "params": {
+            "rate_per_minute": 0.02
+          }
+        }
+      ],
+      "ae": {
+        "spike": {
+          "events": 10,
+          "detected": 8,
+          "recall": 0.8,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.6483
+        },
+        "drift": {
+          "events": 10,
+          "detected": 5,
+          "recall": 0.5,
+          "mean_delay_min": 7.0,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 1.5475
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.4988
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 1.4257
+        },
+        "all": {
+          "events": 40,
+          "detected": 23,
+          "recall": 0.575,
+          "mean_delay_min": 1.5217,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.2855
+        }
+      },
+      "ae_per_machine": {
+        "spike": {
+          "events": 10,
+          "detected": 8,
+          "recall": 0.8,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.4984
+        },
+        "drift": {
+          "events": 10,
+          "detected": 5,
+          "recall": 0.5,
+          "mean_delay_min": 5.0,
+          "median_delay_min": 5.0,
+          "false_alarms_per_day": 1.7194
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.8314
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 0.7129
+        },
+        "all": {
+          "events": 40,
+          "detected": 23,
+          "recall": 0.575,
+          "mean_delay_min": 1.087,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.2026
+        }
+      },
+      "separation": [
+        {
+          "fault_id": "corrbreak-m_22",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0424,
+          "normal_median": 0.0026,
+          "ratio": 16.0572,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_10",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.1697,
+          "normal_median": 0.0025,
+          "ratio": 67.6515,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_13",
+          "type": "spike",
+          "metric": "net_in",
+          "peak": 101.416,
+          "normal_median": 0.0026,
+          "ratio": 39652.019,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_23",
+          "type": "spike",
+          "metric": "mem",
+          "peak": 53.6349,
+          "normal_median": 0.0026,
+          "ratio": 21014.8488,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_7",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.0184,
+          "normal_median": 0.0021,
+          "ratio": 8.9788,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_19",
+          "type": "drift",
+          "metric": "disk_io",
+          "peak": 0.0029,
+          "normal_median": 0.0021,
+          "ratio": 1.3938,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_6",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.0708,
+          "normal_median": 0.0023,
+          "ratio": 30.5684,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_16",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.045,
+          "normal_median": 0.003,
+          "ratio": 14.8247,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_14",
+          "type": "spike",
+          "metric": "net_out",
+          "peak": 109.6558,
+          "normal_median": 0.0032,
+          "ratio": 34693.0445,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_25",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 11.0471,
+          "normal_median": 0.0031,
+          "ratio": 3620.1773,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_15",
+          "type": "corrbreak",
+          "metric": "mem",
+          "peak": 0.017,
+          "normal_median": 0.0028,
+          "ratio": 6.0425,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "break-m_1",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 16.7344,
+          "normal_median": 0.0024,
+          "ratio": 7082.6103,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_9",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 20.716,
+          "normal_median": 0.0016,
+          "ratio": 12590.8409,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_40",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.0681,
+          "normal_median": 0.0036,
+          "ratio": 19.0895,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_11",
+          "type": "spike",
+          "metric": "mem",
+          "peak": 19.0378,
+          "normal_median": 0.0014,
+          "ratio": 13635.4911,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_2",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 17.3971,
+          "normal_median": 0.0017,
+          "ratio": 10490.3303,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_17",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 20.9987,
+          "normal_median": 0.0028,
+          "ratio": 7473.3649,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_35",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 15.2149,
+          "normal_median": 0.002,
+          "ratio": 7791.5865,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_39",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 19.5886,
+          "normal_median": 0.0018,
+          "ratio": 10740.3301,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_36",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 2.2579,
+          "normal_median": 0.0019,
+          "ratio": 1194.9601,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_12",
+          "type": "spike",
+          "metric": "net_out",
+          "peak": 2528.6335,
+          "normal_median": 0.001,
+          "ratio": 2427522.3864,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_30",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 12.5324,
+          "normal_median": 0.0017,
+          "ratio": 7403.8486,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "break-m_29",
+          "type": "break",
+          "metric": "net_in",
+          "peak": 17.4082,
+          "normal_median": 0.0021,
+          "ratio": 8205.2543,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_32",
+          "type": "corrbreak",
+          "metric": "cpu",
+          "peak": 0.0051,
+          "normal_median": 0.0013,
+          "ratio": 3.9931,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_20",
+          "type": "corrbreak",
+          "metric": "net_in",
+          "peak": 0.0344,
+          "normal_median": 0.0017,
+          "ratio": 20.6341,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_31",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.1663,
+          "normal_median": 0.0031,
+          "ratio": 52.8917,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "spike-m_37",
+          "type": "spike",
+          "metric": "net_out",
+          "peak": 111.3153,
+          "normal_median": 0.001,
+          "ratio": 108323.1284,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_38",
+          "type": "drift",
+          "metric": "mem",
+          "peak": 3.2062,
+          "normal_median": 0.003,
+          "ratio": 1069.0505,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_34",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.0094,
+          "normal_median": 0.0016,
+          "ratio": 5.8094,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_18",
+          "type": "spike",
+          "metric": "net_in",
+          "peak": 78.961,
+          "normal_median": 0.0024,
+          "ratio": 32798.9579,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_33",
+          "type": "drift",
+          "metric": "mem",
+          "peak": 4.9856,
+          "normal_median": 0.0035,
+          "ratio": 1435.0738,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_4",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.0114,
+          "normal_median": 0.002,
+          "ratio": 5.5913,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_3",
+          "type": "corrbreak",
+          "metric": "net_out",
+          "peak": 0.1281,
+          "normal_median": 0.002,
+          "ratio": 63.6937,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "corrbreak-m_26",
+          "type": "corrbreak",
+          "metric": "cpu",
+          "peak": 0.0267,
+          "normal_median": 0.0014,
+          "ratio": 19.6398,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_27",
+          "type": "drift",
+          "metric": "net_out",
+          "peak": 8.9718,
+          "normal_median": 0.0023,
+          "ratio": 3838.1086,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "drift-m_21",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.006,
+          "normal_median": 0.0016,
+          "ratio": 3.6932,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "spike-m_28",
+          "type": "spike",
+          "metric": "cpu",
+          "peak": 0.0121,
+          "normal_median": 0.0024,
+          "ratio": 4.9504,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_5",
+          "type": "drift",
+          "metric": "mem",
+          "peak": 1.3983,
+          "normal_median": 0.0016,
+          "ratio": 851.6518,
+          "over_global": true,
+          "over_own_threshold": true
+        },
+        {
+          "fault_id": "corrbreak-m_8",
+          "type": "corrbreak",
+          "metric": "cpu",
+          "peak": 0.0113,
+          "normal_median": 0.0018,
+          "ratio": 6.3104,
+          "over_global": false,
+          "over_own_threshold": false
+        },
+        {
+          "fault_id": "drift-m_24",
+          "type": "drift",
+          "metric": "cpu",
+          "peak": 0.0078,
+          "normal_median": 0.0027,
+          "ratio": 2.8822,
+          "over_global": false,
+          "over_own_threshold": false
+        }
+      ],
+      "tier1_matched": {
+        "spike": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.0489
+        },
+        "drift": {
+          "events": 10,
+          "detected": 3,
+          "recall": 0.3,
+          "mean_delay_min": 20.0,
+          "median_delay_min": 25.0,
+          "false_alarms_per_day": 1.8913
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.8314
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 1.4257
+        },
+        "all": {
+          "events": 40,
+          "detected": 20,
+          "recall": 0.5,
+          "mean_delay_min": 3.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 1.2855
+        }
+      },
+      "tier1_matched_threshold": 16.5,
+      "tier1_t20": {
+        "spike": {
+          "events": 10,
+          "detected": 7,
+          "recall": 0.7,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.4495
+        },
+        "drift": {
+          "events": 10,
+          "detected": 2,
+          "recall": 0.2,
+          "mean_delay_min": 17.5,
+          "median_delay_min": 17.5,
+          "false_alarms_per_day": 0.6878
+        },
+        "break": {
+          "events": 10,
+          "detected": 10,
+          "recall": 1.0,
+          "mean_delay_min": 0.0,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.4988
+        },
+        "corrbreak": {
+          "events": 10,
+          "detected": 0,
+          "recall": 0.0,
+          "mean_delay_min": null,
+          "median_delay_min": null,
+          "false_alarms_per_day": 0.8911
+        },
+        "all": {
+          "events": 40,
+          "detected": 19,
+          "recall": 0.475,
+          "mean_delay_min": 1.8421,
+          "median_delay_min": 0.0,
+          "false_alarms_per_day": 0.622
+        }
+      },
+      "tier1_sweep": [
+        {
+          "threshold": 3.0,
+          "false_alarms_per_day": 180.8864,
+          "all_recall": 0.875
+        },
+        {
+          "threshold": 3.5,
+          "false_alarms_per_day": 140.9935,
+          "all_recall": 0.85
+        },
+        {
+          "threshold": 4.0,
+          "false_alarms_per_day": 110.1408,
+          "all_recall": 0.775
+        },
+        {
+          "threshold": 4.5,
+          "false_alarms_per_day": 77.5879,
+          "all_recall": 0.75
+        },
+        {
+          "threshold": 5.0,
+          "false_alarms_per_day": 60.5443,
+          "all_recall": 0.725
+        },
+        {
+          "threshold": 5.5,
+          "false_alarms_per_day": 44.9521,
+          "all_recall": 0.725
+        },
+        {
+          "threshold": 6.0,
+          "false_alarms_per_day": 36.4924,
+          "all_recall": 0.7
+        },
+        {
+          "threshold": 6.5,
+          "false_alarms_per_day": 27.6596,
+          "all_recall": 0.675
+        },
+        {
+          "threshold": 7.0,
+          "false_alarms_per_day": 22.2272,
+          "all_recall": 0.675
+        },
+        {
+          "threshold": 7.5,
+          "false_alarms_per_day": 16.7533,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 8.0,
+          "false_alarms_per_day": 13.0212,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 8.5,
+          "false_alarms_per_day": 11.4039,
+          "all_recall": 0.65
+        },
+        {
+          "threshold": 9.0,
+          "false_alarms_per_day": 9.5378,
+          "all_recall": 0.625
+        },
+        {
+          "threshold": 9.5,
+          "false_alarms_per_day": 8.0864,
+          "all_recall": 0.625
+        },
+        {
+          "threshold": 10.0,
+          "false_alarms_per_day": 6.8423,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 10.5,
+          "false_alarms_per_day": 5.8056,
+          "all_recall": 0.575
+        },
+        {
+          "threshold": 11.0,
+          "false_alarms_per_day": 5.1006,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 11.5,
+          "false_alarms_per_day": 4.3127,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 12.0,
+          "false_alarms_per_day": 3.7322,
+          "all_recall": 0.55
+        },
+        {
+          "threshold": 12.5,
+          "false_alarms_per_day": 3.0272,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 13.0,
+          "false_alarms_per_day": 2.7369,
+          "all_recall": 0.525
+        },
+        {
+          "threshold": 13.5,
+          "false_alarms_per_day": 2.4467,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 14.0,
+          "false_alarms_per_day": 2.1564,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 14.5,
+          "false_alarms_per_day": 1.9076,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 15.0,
+          "false_alarms_per_day": 1.8661,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 15.5,
+          "false_alarms_per_day": 1.7417,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 16.0,
+          "false_alarms_per_day": 1.5343,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 16.5,
+          "false_alarms_per_day": 1.2855,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 17.0,
+          "false_alarms_per_day": 1.1197,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 17.5,
+          "false_alarms_per_day": 0.9952,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 18.0,
+          "false_alarms_per_day": 0.9538,
+          "all_recall": 0.5
+        },
+        {
+          "threshold": 18.5,
+          "false_alarms_per_day": 0.9538,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 19.0,
+          "false_alarms_per_day": 0.8708,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 19.5,
+          "false_alarms_per_day": 0.705,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 20.0,
+          "false_alarms_per_day": 0.622,
+          "all_recall": 0.475
+        },
+        {
+          "threshold": 21.0,
+          "false_alarms_per_day": 0.5391,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 22.0,
+          "false_alarms_per_day": 0.3732,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 23.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.45
+        },
+        {
+          "threshold": 24.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 25.0,
+          "false_alarms_per_day": 0.2488,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 26.0,
+          "false_alarms_per_day": 0.2073,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 27.0,
+          "false_alarms_per_day": 0.1659,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 28.0,
+          "false_alarms_per_day": 0.1244,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 29.0,
+          "false_alarms_per_day": 0.1244,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 30.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 31.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 32.0,
+          "false_alarms_per_day": 0.0829,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 33.0,
+          "false_alarms_per_day": 0.0415,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 34.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 35.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 36.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 37.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 38.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 39.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 40.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 41.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.425
+        },
+        {
+          "threshold": 42.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 43.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 44.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 45.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.4
+        },
+        {
+          "threshold": 46.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.375
+        },
+        {
+          "threshold": 47.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.35
+        },
+        {
+          "threshold": 48.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 49.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 50.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 51.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.325
+        },
+        {
+          "threshold": 52.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 53.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.3
+        },
+        {
+          "threshold": 54.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 55.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 56.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 57.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 58.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 59.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.275
+        },
+        {
+          "threshold": 60.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.25
+        },
+        {
+          "threshold": 65.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.225
+        },
+        {
+          "threshold": 70.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.2
+        },
+        {
+          "threshold": 75.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.15
+        },
+        {
+          "threshold": 80.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.15
+        },
+        {
+          "threshold": 85.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.15
+        },
+        {
+          "threshold": 90.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 95.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 100.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 105.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.125
+        },
+        {
+          "threshold": 110.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.1
+        },
+        {
+          "threshold": 115.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.1
+        },
+        {
+          "threshold": 120.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 125.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 130.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 135.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 140.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 145.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 150.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 155.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 160.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 165.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 170.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 175.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 180.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 185.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 190.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 195.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        },
+        {
+          "threshold": 200.0,
+          "false_alarms_per_day": 0.0,
+          "all_recall": 0.075
+        }
+      ],
+      "ae_top3_hit": {
+        "drift": {
+          "hits": 5,
+          "of": 5
+        },
+        "spike": {
+          "hits": 8,
+          "of": 8
+        },
+        "break": {
+          "hits": 10,
+          "of": 10
+        }
+      }
+    }
+  ],
+  "runtime_s": 768.2728
+}
