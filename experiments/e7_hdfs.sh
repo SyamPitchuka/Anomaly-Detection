@@ -152,7 +152,7 @@ sample() {
 field() { "${REPORT[@]}" sample "${LAST_SAMPLE}" --field "$1"; }
 
 recreate_anomalies() {
-    "${PY}" "${CLUSTER_DIR}/create_topics_cluster.py" --bootstrap "${KAFKA_BOOTSTRAP}" --recreate "${ANOM_TOPIC}" \
+    "${PY}" "${CLUSTER_DIR}/create_topics_cluster.py" --bootstrap "${KAFKA_BOOTSTRAP}" --recreate "${ANOM_TOPIC}" --partitions telemetry.smd=32 \
         > "${OUT}/topics.log" 2>&1 || { cat "${OUT}/topics.log" >&2; die "could not recreate ${ANOM_TOPIC}"; }
 }
 

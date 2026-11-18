@@ -1,0 +1,371 @@
+{
+  "meta": {
+    "date": "2026-11-18",
+    "out_dir": "e7_run1",
+    "expected_datanodes": 3
+  },
+  "a_clean": {
+    "run": {
+      "run_id": "e7_run1_clean",
+      "status": "drained",
+      "records": 1416825,
+      "consumed": 1416825,
+      "batches": 8,
+      "drain_s": 70.781,
+      "records_per_s": 20017.024342690835,
+      "steady_records_per_s": 27883.524289642526,
+      "batch_mean_s": 8.8445,
+      "executors": 5,
+      "cores": 2,
+      "checkpoint_dir": "hdfs://spark-master:9000/spark-anomaly/checkpoints/e7/e7_run1_clean"
+    },
+    "drained": true,
+    "score_rows": 141624,
+    "anomalies": 1158,
+    "anomalies_topic_distinct": 1158
+  },
+  "b_fault": {
+    "run": {
+      "run_id": "e7_run1_fault",
+      "status": "drained",
+      "records": 1416825,
+      "consumed": 1416825,
+      "batches": 8,
+      "drain_s": 76.72,
+      "records_per_s": 18467.47914494265,
+      "steady_records_per_s": 24723.41419805762,
+      "batch_mean_s": 9.586125,
+      "executors": 5,
+      "cores": 2,
+      "checkpoint_dir": "hdfs://spark-master:9000/spark-anomaly/checkpoints/e7/e7_run1_fault"
+    },
+    "compare": {
+      "parquet": {
+        "clean_rows": 141624,
+        "clean_distinct": 141624,
+        "fault_rows": 141624,
+        "fault_distinct": 141624,
+        "clean_duplicates": 0,
+        "fault_duplicates": 0,
+        "lost": 0,
+        "extra": 0,
+        "mismatch": 0,
+        "lost_sample": [],
+        "extra_sample": []
+      },
+      "topic": {
+        "clean_rows": 1158,
+        "clean_distinct": 1158,
+        "fault_rows": 1158,
+        "fault_distinct": 1158,
+        "clean_duplicates": 0,
+        "fault_duplicates": 0,
+        "lost": 0,
+        "extra": 0,
+        "mismatch": 0,
+        "lost_sample": [],
+        "extra_sample": []
+      },
+      "clean_anomalies": 1158,
+      "fault_anomalies": 1158,
+      "pass": true
+    },
+    "stop_host": "spark-w5",
+    "stopped_after_batches": 3,
+    "samples": 19,
+    "max_under_replicated": 59,
+    "max_missing": 0,
+    "blocks_at_max": 179,
+    "dead_detected_after_s": 90.9,
+    "first_under_replicated_after_s": 90.9,
+    "restart_after_s": 164.3,
+    "under_replicated_at_restart": 4,
+    "healed_after_restart_s": 5.0,
+    "final": {
+      "ts_ms": 1794965997459,
+      "phase": "restarted",
+      "live": 3,
+      "status": "HEALTHY",
+      "total_blocks": 179,
+      "under_replicated": 0,
+      "missing": 0,
+      "corrupt": 0,
+      "missing_replicas": 0,
+      "datanodes": 3
+    },
+    "checks": {
+      "fault run drained": true,
+      "scores and anomalies identical to (a)": true,
+      "fsck never reported a missing or corrupt block": true,
+      "fsck reported under-replicated blocks while the DataNode was down": true,
+      "after the restart: all DataNodes live, 0 under-replicated, HEALTHY": true
+    },
+    "timeline": [
+      {
+        "t_s": -7.9,
+        "phase": "before",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 75,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 0.0,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 99,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 10.9,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 134,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 21.7,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 158,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 32.3,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 42.9,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 52.4,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 62.2,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 71.7,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 81.3,
+        "phase": "outage",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      },
+      {
+        "t_s": 90.9,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 59,
+        "missing": 0
+      },
+      {
+        "t_s": 101.1,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 44,
+        "missing": 0
+      },
+      {
+        "t_s": 110.6,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 34,
+        "missing": 0
+      },
+      {
+        "t_s": 120.2,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 22,
+        "missing": 0
+      },
+      {
+        "t_s": 130.0,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 13,
+        "missing": 0
+      },
+      {
+        "t_s": 139.6,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 4,
+        "missing": 0
+      },
+      {
+        "t_s": 149.2,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 4,
+        "missing": 0
+      },
+      {
+        "t_s": 158.9,
+        "phase": "outage",
+        "live": 2,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 4,
+        "missing": 0
+      },
+      {
+        "t_s": 169.3,
+        "phase": "restarted",
+        "live": 3,
+        "status": "HEALTHY",
+        "blocks": 179,
+        "under": 0,
+        "missing": 0
+      }
+    ],
+    "pass": true
+  },
+  "c_throughput": {
+    "hdfs": {
+      "runs": 3,
+      "drained": 3,
+      "run_ids": [
+        "e7_run1_hdfs_rep1",
+        "e7_run1_hdfs_rep2",
+        "e7_run1_hdfs_rep3"
+      ],
+      "records_per_s": {
+        "mean": 23645.587460256258,
+        "min": 22342.374547566913,
+        "max": 24689.529170678714
+      },
+      "steady_records_per_s": {
+        "mean": 31368.437569146063,
+        "min": 29059.13501121999,
+        "max": 32872.692075898965
+      },
+      "drain_s": {
+        "mean": 84.729,
+        "min": 81.006,
+        "max": 89.516
+      },
+      "batch_mean_s": {
+        "mean": 7.699939393939393,
+        "min": 7.361727272727273,
+        "max": 8.135090909090907
+      },
+      "batch_p95_s": {
+        "mean": 27.179999999999996,
+        "min": 26.249,
+        "max": 27.718
+      },
+      "first_batch_s": {
+        "mean": 27.179999999999996,
+        "min": 26.249,
+        "max": 27.718
+      }
+    },
+    "nfs_baseline": {
+      "runs": 3,
+      "drained": 3,
+      "run_ids": [
+        "e2_20261115T135530Z_e5c2_rep1",
+        "e2_20261115T135530Z_e5c2_rep2",
+        "e2_20261115T135530Z_e5c2_rep3"
+      ],
+      "records_per_s": {
+        "mean": 24341.98150249233,
+        "min": 24096.96619195643,
+        "max": 24711.798648264612
+      },
+      "steady_records_per_s": {
+        "mean": 32373.65463681324,
+        "min": 32045.183457656083,
+        "max": 32954.54129364163
+      },
+      "drain_s": {
+        "mean": 82.17233333333333,
+        "min": 80.933,
+        "max": 82.998
+      },
+      "batch_mean_s": {
+        "mean": 7.467121212121214,
+        "min": 7.354909090909092,
+        "max": 7.5415454545454566
+      },
+      "batch_p95_s": {
+        "mean": 26.56233333333333,
+        "min": 26.312,
+        "max": 26.827
+      },
+      "first_batch_s": {
+        "mean": 26.56233333333333,
+        "min": 26.312,
+        "max": 26.827
+      },
+      "source": "e2_cluster_5w.json",
+      "date": "2026-11-15",
+      "records": 2000000,
+      "replicate": 4
+    },
+    "hdfs_vs_nfs_baseline": 0.971
+  },
+  "caveats": [
+    "The NameNode is still a single point of failure: HDFS removes the single NFS server from the DataNode side (blocks are replicated twice over three VMs), but every checkpoint read and write needs the one NameNode on spark-master. An HA NameNode (two NameNodes, three JournalNodes, ZooKeeper failover) is future work; the cluster has no memory left for it on the 8 GB workers.",
+    "spark-master is also the Spark master, the driver host, the Kafka broker and the NFS server, so losing that VM still stops the pipeline; E7 tests the loss of a storage node, not of the master.",
+    "Only a DataNode process was stopped (systemctl stop), not a VM or a disk, and only one of three; with replication 2 a second simultaneous DataNode loss can make blocks missing.",
+    "The NameNode counts a stopped DataNode's replicas as live until it declares the node dead (2 x recheck interval + 10 heartbeats = 90 s here; Hadoop's default is 10.5 min), so under-replication appears in fsck only from then on, and the NameNode then re-replicates onto the two remaining DataNodes.",
+    "The NFS throughput baseline is the E2 sweep (docs/results/e2_cluster_5w.json) from an earlier day; since then Cassandra (E6) and the HDFS daemons run on spark-w2, spark-w5 and spark-master."
+  ],
+  "pass": true
+}
