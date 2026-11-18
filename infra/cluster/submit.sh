@@ -12,6 +12,11 @@
 #       --allow-local-checkpoint  EXPERIMENT ONLY (E2 bottleneck): accept a D outside $SHARED_DIR, e.g. /tmp/ckpt-<run>,
 #                            so the driver keeps offsets/commits and every executor its state files on its own local
 #                            disk. Prints a warning: recovery after a driver or executor loss is NOT guaranteed.
+#                            D may also be an HDFS URI, hdfs://<namenode>:<port>/<path> (E7, deploy.sh hdfs): no
+#                            shared-storage check then; the NameNode port must be reachable from this VM. The full URI
+#                            is passed on, so no core-site.xml / fs.defaultFS is needed on the Spark nodes; the Spark
+#                            HDFS client gets --conf spark.hadoop.dfs.replication=$HDFS_REPLICATION. score_job --reset
+#                            deletes the HDFS checkpoint with the Hadoop FileSystem API.
 #   -p, --shuffle-partitions N  spark.sql.shuffle.partitions (default 16). Keep it constant for the life of a
 #                            checkpoint: Spark fixes the state-store partition count when the query first starts.
 #   -m, --max-offsets-per-trigger N  at most N Kafka records per micro-batch (score_job --max-offsets-per-trigger,
@@ -85,10 +90,19 @@ need_mb=$((WORST_PER_WORKER * (exec_mb + overhead_mb) + $(mem_to_mb "${SPARK_DAE
 [[ "${need_mb}" -le "$(mem_to_mb "${VM_MEMORY}")" ]] \
     || die "a worker VM would need ${need_mb} MB for ${WORST_PER_WORKER} executors but VM_MEMORY is ${VM_MEMORY}"
 
-# ---- checkpoints must be on shared storage --------------------------------------------------
-CKPT_ROOT="$(realpath -m "${CKPT_ROOT}")"
+# ---- checkpoints must be on shared storage (NFS or HDFS) -------------------------------------
 CKPT_LOCAL=0
+CKPT_HDFS=0
+if is_hdfs_uri "${CKPT_ROOT}"; then
+    CKPT_ROOT="${CKPT_ROOT%/}"
+    valid_hdfs_uri "${CKPT_ROOT}" || die "checkpoint URI '${CKPT_ROOT}' is not hdfs://<namenode>[:port]/<path>"
+    CKPT_HDFS=1
+else
+    [[ "${CKPT_ROOT}" != *://* ]] || die "checkpoint dir '${CKPT_ROOT}': only hdfs:// URIs are supported"
+    CKPT_ROOT="$(realpath -m "${CKPT_ROOT}")"
+fi
 case "${CKPT_ROOT}/" in
+    hdfs://*) ;;
     "${SHARED_DIR}"/*) ;;
     *) [[ "${ALLOW_LOCAL_CKPT}" -eq 1 ]]            || die "checkpoint dir ${CKPT_ROOT} is not under the shared storage ${SHARED_DIR}; executors and a restarted driver would not see it (experiments only: --allow-local-checkpoint)"
        CKPT_LOCAL=1
@@ -110,8 +124,10 @@ CMD=("${SUBMIT}"
      --deploy-mode client
      --packages "${KAFKA_PACKAGE}"
      --executor-cores "${CORES}"
-     --total-executor-cores "${TOTAL_CORES}"
-     "${ENTRY}"
+     --total-executor-cores "${TOTAL_CORES}")
+# HDFS client side of dfs.replication: the Hadoop client bundled with Spark defaults to 3, not the servers' value
+[[ "${CKPT_HDFS}" -eq 0 ]] || CMD+=(--conf "spark.hadoop.dfs.replication=${HDFS_REPLICATION}")
+CMD+=("${ENTRY}"
      --input kafka
      --master "${SPARK_MASTER_URL}"          # score_job's own --master (its default local[*] would override spark-submit's)
      --shuffle-partitions "${SHUFFLE_PARTITIONS}")
@@ -120,7 +136,7 @@ CMD+=("${JOB_ARGS[@]}")
 
 log "score_job: ${EXECUTORS} executors x ${CORES} cores = ${TOTAL_CORES} cores on ${SPARK_MASTER_URL}"
 log "  Kafka        ${KAFKA_BOOTSTRAP}   package ${KAFKA_PACKAGE}"
-log "  checkpoints  ${SCORE_CHECKPOINT_DIR}$([[ "${CKPT_LOCAL}" -eq 1 ]] && echo ' (LOCAL disk of each node, experiment only)')"
+log "  checkpoints  ${SCORE_CHECKPOINT_DIR}$([[ "${CKPT_LOCAL}" -eq 1 ]] && echo ' (LOCAL disk of each node, experiment only)')$([[ "${CKPT_HDFS}" -eq 1 ]] && echo " (HDFS, replication ${HDFS_REPLICATION})")"
 log "  batch cap    ${MAX_OFFSETS:-none} (maxOffsetsPerTrigger)"
 log "  models       ${REPO_DIR}/models (shared mount, checked on ${SPARK_WORKER_COUNT} workers)"
 if [[ "${DRY_RUN}" -eq 1 ]]; then
@@ -136,8 +152,15 @@ fi
 [[ -x "${PY}" ]] || die "${PY} not found; run 30_spark_node.sh"
 [[ -f "${ENTRY}" ]] || die "${ENTRY} not found on the share; run deploy.sh repo"
 mountpoint -q "${SHARED_DIR}" || is_nfs_server || die "${SHARED_DIR} is not mounted"
-mkdir -p "${SCORE_CHECKPOINT_DIR}"
-[[ -w "${SCORE_CHECKPOINT_DIR}" ]] || die "${SCORE_CHECKPOINT_DIR} is not writable by $(id -un)"
+if [[ "${CKPT_HDFS}" -eq 1 ]]; then
+    # the driver creates the directory itself; only make sure the NameNode answers (executors resolve the same name)
+    nn_host="$(hdfs_uri_host "${CKPT_ROOT}")"; nn_port="$(hdfs_uri_port "${CKPT_ROOT}")"
+    getent hosts "${nn_host}" > /dev/null || die "NameNode host '${nn_host}' does not resolve on $(hostname -s)"
+    wait_port "${nn_host}" "${nn_port}" 10 || die "NameNode ${nn_host}:${nn_port} unreachable (deploy.sh hdfs; health_check.sh hdfs)"
+else
+    mkdir -p "${SCORE_CHECKPOINT_DIR}"
+    [[ -w "${SCORE_CHECKPOINT_DIR}" ]] || die "${SCORE_CHECKPOINT_DIR} is not writable by $(id -un)"
+fi
 
 models_sum() { # models_sum: checksum of file names + contents under $REPO_DIR/models (run on a node)
     (cd "${REPO_DIR}/models" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)

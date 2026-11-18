@@ -83,6 +83,9 @@ Bottleneck experiments (E2; defaults leave the job unchanged):
   as the real write_batch does before scoring: no shuffle, no state, no scoring, no output files. The
   progress / durationMs / foreachBatch-step lines and progress.jsonl are written as usual.
 - --checkpoint-dir PATH: query checkpoint directory instead of checkpoints/score/source=smd (--reset deletes it).
+  PATH may be a Hadoop URI such as hdfs://spark-master:9000/spark-anomaly/checkpoints/x (E7): it is passed to
+  Spark as is (never through pathlib, which would turn 'hdfs://' into 'hdfs:/') and --reset deletes it with the
+  Hadoop FileSystem API once the SparkSession exists.
 - --state-store rocksdb: spark.sql.streaming.stateStore.providerClass = RocksDBStateStoreProvider with
   changelog checkpointing on (default hdfs = Spark's HDFSBackedStateStoreProvider). The provider is fixed in
   the checkpoint when a query first starts, so switch it only on a fresh checkpoint (--reset).
@@ -548,6 +551,28 @@ STATE_STORES = {"hdfs": None,   # Spark's default HDFSBackedStateStoreProvider, 
                 "rocksdb": "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"}
 
 
+_URI_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+://")
+
+
+def is_uri(location) -> bool:
+    """True for a Hadoop file-system URI (hdfs://namenode:9000/path, ...), False for a local path or Path.
+    One-letter schemes are excluded, so a Windows drive letter is never taken for one."""
+    return isinstance(location, str) and _URI_RE.match(location) is not None
+
+
+def checkpoint_location(location) -> str:
+    """What Spark gets as checkpointLocation: a URI unchanged (trailing '/' dropped), a local path in posix form."""
+    return location.rstrip("/") if is_uri(location) else Path(location).as_posix()
+
+
+def delete_hadoop_path(spark, uri: str) -> bool:
+    """Recursively delete uri with the Hadoop FileSystem API of the driver JVM. False if it did not exist."""
+    jvm = spark.sparkContext._jvm
+    path = jvm.org.apache.hadoop.fs.Path(uri)
+    fs = path.getFileSystem(spark.sparkContext._jsc.hadoopConfiguration())
+    return bool(fs.delete(path, True))
+
+
 def state_store_conf(name: str) -> dict[str, str]:
     """--state-store -> the SQL confs to set before the query starts ({} for the default hdfs)."""
     provider = STATE_STORES[name]
@@ -587,8 +612,8 @@ def main(argv=None) -> int:
     parser.add_argument("--read-only", action="store_true",
                         help="experiment: read + parse telemetry, then only persist+count per batch (no state, "
                              "no scoring, no writes)")
-    parser.add_argument("--checkpoint-dir", type=Path, default=None, metavar="PATH",
-                        help="query checkpoint directory (default checkpoints/score/source=smd)")
+    parser.add_argument("--checkpoint-dir", default=None, metavar="PATH",
+                        help="query checkpoint directory or hdfs:// URI (default checkpoints/score/source=smd)")
     parser.add_argument("--state-store", choices=tuple(STATE_STORES), default="hdfs",
                         help="state store provider: hdfs (Spark default) or rocksdb (+ changelog checkpointing); "
                              "only on a fresh checkpoint")
@@ -602,15 +627,17 @@ def main(argv=None) -> int:
         parser.error("--cassandra-cl needs --cassandra")
     if args.cassandra is not None and args.read_only:
         parser.error("--cassandra cannot be combined with --read-only (nothing is scored)")
-    checkpoint_dir = Path(args.checkpoint_dir if args.checkpoint_dir is not None else CHECKPOINT_DIR)
+    checkpoint = args.checkpoint_dir if args.checkpoint_dir is not None else CHECKPOINT_DIR
+    remote_checkpoint = is_uri(checkpoint)
+    checkpoint_dir = checkpoint_location(checkpoint)
 
     if not (AE_DIR / "model.pt").exists():
         print(f"FAIL no autoencoder at {AE_DIR.relative_to(ROOT).as_posix()}: run src/detection/autoencoder.py")
         return 1
     if args.reset:
-        for d in (OUTPUT_DIR, checkpoint_dir, LATENCY_ROOT):
+        for d in (OUTPUT_DIR, LATENCY_ROOT) + (() if remote_checkpoint else (Path(checkpoint_dir),)):
             shutil.rmtree(d, ignore_errors=True)
-        print("reset: removed stream output and checkpoint", flush=True)
+        print("reset: removed stream output" + ("" if remote_checkpoint else " and checkpoint"), flush=True)
     if args.tier1 == "v1" and not TIER1_PATH.exists():
         print(f"FAIL --tier1 v1 needs {TIER1_PATH.relative_to(ROOT).as_posix()}: run src/detection/tier1_zscore.py")
         return 1
@@ -627,9 +654,12 @@ def main(argv=None) -> int:
     spark = build_spark("score_job", with_kafka=kafka, master=args.master,
                         shuffle_partitions=args.shuffle_partitions)
     spark.sparkContext.setLogLevel("ERROR")
+    if args.reset and remote_checkpoint:
+        existed = delete_hadoop_path(spark, checkpoint_dir)
+        print(f"reset: {'removed' if existed else 'no'} checkpoint {checkpoint_dir} (Hadoop FileSystem API)", flush=True)
     for key, value in state_store_conf(args.state_store).items():
         spark.conf.set(key, value)   # SQL confs: read when the query starts (and then fixed in its checkpoint)
-    print(f"state store: {args.state_store}; checkpoint {checkpoint_dir.as_posix()}"
+    print(f"state store: {args.state_store}; checkpoint {checkpoint_dir}"
           f"{'; READ-ONLY experiment: no state, no scoring, no output' if args.read_only else ''}", flush=True)
     if kafka:
         telemetry, what = read_telemetry(spark, args.max_offsets_per_trigger,
@@ -712,7 +742,7 @@ def main(argv=None) -> int:
         writer = telemetry_rows(telemetry).writeStream.foreachBatch(count_batch)
     else:
         writer = build_scores(telemetry).writeStream.foreachBatch(write_batch)
-    writer = writer.option("checkpointLocation", checkpoint_dir.as_posix())
+    writer = writer.option("checkpointLocation", checkpoint_dir)
     writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime=args.trigger)
     query = writer.start()
     sink = ("count only (--read-only)" if args.read_only else OUTPUT_DIR.relative_to(ROOT).as_posix()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cluster health checks. Run from the admin machine (ssh to the VMs) - or on any VM that can ssh to the others.
 #
-#   bash infra/cluster/health_check.sh [kafka|spark|storage|memory|all|cassandra]
+#   bash infra/cluster/health_check.sh [kafka|spark|storage|memory|all|cassandra|hdfs]
 #
 # Prints OK / FAIL lines and ends with PASS or FAIL (exit 0 / 1), like the tools/check_*.py gauges.
 # The deeper end-to-end checks are Python:  check_kafka_cluster.py  and  check_spark_cluster.py (see README).
@@ -9,6 +9,9 @@
 # KAFKA_BROKER_COUNT (1 or 3) decides how many containers / ports / KRaft voters are expected.
 # 'cassandra' (optional store, not part of 'all'): every CASSANDRA_HOSTS node runs the unit, accepts CQL, and
 # 'nodetool status' on each node lists all of them as UN (Up / Normal).
+# 'hdfs' (optional checkpoint store, E7, not part of 'all'): NameNode unit + RPC port, not in safe mode, every
+# HDFS_DATANODE_HOSTS DataNode unit active and live at the NameNode, and a test file written by the spark user with
+# replication HDFS_REPLICATION, read back, checked by fsck (replicated, nothing missing) and deleted.
 set -uo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -180,6 +183,66 @@ check_cassandra() {
     done
 }
 
+# live_datanodes <dfsadmin -report output>   the N of 'Live datanodes (N):'
+live_datanodes() { sed -n 's/^Live datanodes (\([0-9]*\)):.*/\1/p' <<< "$1" | head -n 1; }
+# fsck_count <fsck output> <label>   first number after '<label>:' (e.g. 'Under-replicated blocks'), '' if absent
+fsck_count() { grep -m1 -E "^[[:space:]]*$2:" <<< "$1" | sed -E 's/^[^:]*:[[:space:]]*([0-9]+).*/\1/'; }
+
+check_hdfs() {
+    local h dn want out n state tag path got rep i under missing
+    read -r -a dn <<< "${HDFS_DATANODE_HOSTS}"
+    want="${#dn[@]}"
+    echo "--- HDFS (${HDFS_URI}; DataNodes ${HDFS_DATANODE_HOSTS}; replication ${HDFS_REPLICATION})"
+    state="$(rsh "${HDFS_NAMENODE_HOST}" "systemctl is-active hadoop-namenode" 2> /dev/null || true)"
+    if [[ "${state}" == "active" ]]; then ok "${HDFS_NAMENODE_HOST}: hadoop-namenode.service active"; else bad "${HDFS_NAMENODE_HOST}: hadoop-namenode.service is '${state:-unknown}'"; fi
+    if wait_port "${HDFS_NAMENODE_HOST}" "${HDFS_NAMENODE_PORT}" 6; then
+        ok "NameNode RPC ${HDFS_NAMENODE_HOST}:${HDFS_NAMENODE_PORT} accepts connections"
+    else
+        bad "NameNode RPC ${HDFS_NAMENODE_HOST}:${HDFS_NAMENODE_PORT} unreachable"
+        return
+    fi
+    for h in "${dn[@]}"; do
+        state="$(rsh "${h}" "systemctl is-active hadoop-datanode" 2> /dev/null || true)"
+        if [[ "${state}" == "active" ]]; then ok "${h}: hadoop-datanode.service active"; else bad "${h}: hadoop-datanode.service is '${state:-unknown}'"; fi
+    done
+    out="$(hdfs_on hdfs dfsadmin -safemode get 2> /dev/null || true)"
+    if grep -q "Safe mode is OFF" <<< "${out}"; then ok "NameNode not in safe mode"; else bad "NameNode safe mode: '${out:-no answer}'"; fi
+    out="$(hdfs_on hdfs dfsadmin -report -live 2> /dev/null || true)"
+    n="$(live_datanodes "${out}")"
+    if [[ "${n:-0}" -eq "${want}" ]]; then ok "live DataNodes: ${n} (want ${want})"; else bad "live DataNodes: ${n:-0}, want ${want}"; fi
+
+    tag="health-$$-$(date +%s)"
+    path="${HDFS_CHECKPOINT_ROOT}/_health/${tag}"
+    if rsh "${HDFS_NAMENODE_HOST}" "echo ${tag} | sudo -n -u spark /usr/local/bin/hdfs dfs -D dfs.replication=${HDFS_REPLICATION} -put - ${path}" 2> /dev/null; then
+        ok "spark user wrote ${HDFS_URI}${path}"
+    else
+        bad "spark user cannot write ${HDFS_URI}${path} (deploy.sh hdfs creates ${HDFS_CHECKPOINT_ROOT})"
+        return
+    fi
+    got="$(hdfs_on spark dfs -cat "${path}" 2> /dev/null || true)"
+    if [[ "${got}" == "${tag}" ]]; then ok "read back the test file"; else bad "read back '${got}', want '${tag}'"; fi
+    rep="$(hdfs_on spark dfs -stat %r "${path}" 2> /dev/null || true)"
+    if [[ "${rep}" == "${HDFS_REPLICATION}" ]]; then ok "test file replication factor ${rep}"; else bad "test file replication '${rep}', want ${HDFS_REPLICATION}"; fi
+    for ((i = 0; i < 10; i++)); do     # block reports reach the NameNode a moment after the write
+        out="$(hdfs_on hdfs fsck "${path}" 2> /dev/null || true)"
+        under="$(fsck_count "${out}" "Under-replicated blocks")"
+        missing="$(fsck_count "${out}" "Missing blocks")"
+        [[ "${under}" == "0" && "${missing}" == "0" ]] && break
+        sleep 1
+    done
+    if [[ "${under}" == "0" && "${missing}" == "0" ]] && grep -q "Status: HEALTHY" <<< "${out}"; then
+        ok "fsck: HEALTHY, 0 under-replicated, 0 missing (${HDFS_REPLICATION} replicas)"
+    else
+        bad "fsck of the test file: under-replicated '${under}', missing '${missing}'"
+        echo "${out}" | grep -E "Status|replicated|Missing|Corrupt" | sed 's/^/     /'
+    fi
+    if hdfs_on spark dfs -rm -skipTrash "${path}" > /dev/null 2>&1 && ! hdfs_on spark dfs -test -e "${path}" 2> /dev/null; then
+        ok "deleted the test file"
+    else
+        bad "could not delete ${path}"
+    fi
+}
+
 target="${1:-all}"
 case "${target}" in
     kafka) check_kafka ;;
@@ -188,7 +251,8 @@ case "${target}" in
     memory) check_memory ;;
     all) check_kafka; check_spark; check_storage; check_memory ;;
     cassandra) check_cassandra ;;
-    *) die "usage: health_check.sh [kafka|spark|storage|memory|all|cassandra]" ;;
+    hdfs) check_hdfs ;;
+    *) die "usage: health_check.sh [kafka|spark|storage|memory|all|cassandra|hdfs]" ;;
 esac
 
 if [[ "${fails}" -eq 0 ]]; then

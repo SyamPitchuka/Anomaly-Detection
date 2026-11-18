@@ -10,6 +10,9 @@
 # Optional phase, never part of 'all' (the pipeline does not need it):
 #   cassandra   Apache Cassandra 5.0.x on CASSANDRA_HOSTS (40_cassandra.sh), then waits for CQL on every node.
 #               Needs Java 17 on those hosts (00_prereqs.sh). Check with: health_check.sh cassandra
+#   hdfs        Apache Hadoop 3.3.6 HDFS (50_hdfs.sh): NameNode on HDFS_NAMENODE_HOST first, then a DataNode on each
+#               HDFS_DATANODE_HOSTS VM, then the checkpoint root HDFS_CHECKPOINT_ROOT (owner spark). E7 only: runs use
+#               it with submit.sh / drain_test.sh -k hdfs://<namenode>:9000/<path>. Check with: health_check.sh hdfs
 # (proxy: tinyproxy on OUTBOUND_PROXY_HOST for workers without a public IP; a no-op when OUTBOUND_PROXY_HOST is empty)
 set -euo pipefail
 # shellcheck source=lib.sh
@@ -126,6 +129,21 @@ phase_cassandra() {
     done
 }
 
+phase_hdfs() {
+    local h dn
+    read -r -a dn <<< "${HDFS_DATANODE_HOSTS}"
+    [[ "${#dn[@]}" -ge 1 ]] || die "HDFS_DATANODE_HOSTS is empty"
+    run_script "${HDFS_NAMENODE_HOST}" 50_hdfs.sh            # also its DataNode, when it is one of them
+    wait_port "${HDFS_NAMENODE_HOST}" "${HDFS_NAMENODE_PORT}" 180         || die "no NameNode RPC on ${HDFS_NAMENODE_HOST}:${HDFS_NAMENODE_PORT}; see: ssh ${HDFS_NAMENODE_HOST} sudo journalctl -u hadoop-namenode"
+    for h in "${dn[@]}"; do
+        [[ "${h%%.*}" == "${HDFS_NAMENODE_HOST%%.*}" ]] && continue
+        run_script "${h}" 50_hdfs.sh
+    done
+    push_scripts "${HDFS_NAMENODE_HOST}"
+    rsudo "${HDFS_NAMENODE_HOST}" "bash /tmp/cluster-setup/50_hdfs.sh --init-dirs"
+    log "HDFS up: ${HDFS_URI}, ${#dn[@]} DataNode(s); checkpoint root ${HDFS_URI}${HDFS_CHECKPOINT_ROOT}"
+}
+
 phase_health() {
     bash "${CLUSTER_DIR}/health_check.sh" all
 }
@@ -143,13 +161,14 @@ run_phase() {
         topics) phase_topics ;;
         health) phase_health ;;
         cassandra) phase_cassandra ;;
-        *) die "unknown phase '$1' (ssh env proxy prereqs nfs repo kafka spark topics health cassandra all)" ;;
+        hdfs) phase_hdfs ;;
+        *) die "unknown phase '$1' (ssh env proxy prereqs nfs repo kafka spark topics health cassandra hdfs all)" ;;
     esac
 }
 
 validate_layout
 phases=("$@")
-[[ "${#phases[@]}" -gt 0 ]] || die "usage: deploy.sh all | <phase>...   (phases: ssh env proxy prereqs nfs repo kafka spark topics health cassandra)"
+[[ "${#phases[@]}" -gt 0 ]] || die "usage: deploy.sh all | <phase>...   (phases: ssh env proxy prereqs nfs repo kafka spark topics health cassandra hdfs)"
 if [[ "${phases[0]}" == "all" ]]; then
     phases=(ssh env proxy prereqs nfs repo kafka spark topics health)
 fi

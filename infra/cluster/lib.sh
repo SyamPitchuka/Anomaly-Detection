@@ -44,6 +44,26 @@ CASSANDRA_CLUSTER_NAME="${CASSANDRA_CLUSTER_NAME:-spark-anomaly}"
 CASSANDRA_DATA_DIR="${CASSANDRA_DATA_DIR:-/var/lib/cassandra}"
 CASSANDRA_CQL_PORT="${CASSANDRA_CQL_PORT:-9042}"
 
+# ---- HDFS checkpoint store (E7; optional, deploy.sh phase 'hdfs') ------------------------------
+# One NameNode + DataNodes on the VMs that have spare memory (spark-master ~3.5 GB, the two 16 GB workers).
+# Only a submit.sh / drain_test.sh -k hdfs://... run uses it; the default checkpoints stay on NFS (CHECKPOINT_DIR).
+# HADOOP_INSTALL_DIR, not HADOOP_HOME: on the Windows laptops HADOOP_HOME already points at winutils.
+HDFS_NAMENODE_HOST="${HDFS_NAMENODE_HOST:-spark-master}"
+HDFS_DATANODE_HOSTS="${HDFS_DATANODE_HOSTS-spark-master spark-w2 spark-w5}"
+HADOOP_VERSION="${HADOOP_VERSION:-3.3.6}"
+HADOOP_INSTALL_DIR="${HADOOP_INSTALL_DIR:-/opt/hadoop}"
+HDFS_NAMENODE_PORT="${HDFS_NAMENODE_PORT:-9000}"
+HDFS_NAMENODE_HEAP="${HDFS_NAMENODE_HEAP:-1g}"
+HDFS_DATANODE_HEAP="${HDFS_DATANODE_HEAP:-512m}"
+HDFS_REPLICATION="${HDFS_REPLICATION:-2}"
+HDFS_DATA_DIR="${HDFS_DATA_DIR:-/var/lib/hadoop-hdfs}"          # name/ (NameNode) and data/ (DataNode), local disk
+HDFS_CLUSTER_ID="${HDFS_CLUSTER_ID:-spark-anomaly-hdfs}"
+HDFS_CHECKPOINT_ROOT="${HDFS_CHECKPOINT_ROOT:-/spark-anomaly/checkpoints}"   # owned by the spark user
+# A stopped DataNode is 'stale' after 30 s and 'dead' after 2 x recheck + 10 x heartbeat (3 s) = 90 s with 30000
+# (Hadoop default 300000: 10.5 min); only a dead node's blocks count as under-replicated and get re-replicated.
+HDFS_HEARTBEAT_RECHECK_MS="${HDFS_HEARTBEAT_RECHECK_MS:-30000}"
+HDFS_URI="hdfs://${HDFS_NAMENODE_HOST}:${HDFS_NAMENODE_PORT}"
+
 # ---- derived values -----------------------------------------------------------------------
 # Number of Kafka brokers (containers on KAFKA_HOST): 1 for the small trial cluster (default, same as cluster.env.example),
 # 3 for the full layout. A cluster.env without the setting must not silently put 3 brokers on a 2 vCPU / 8 GB master.
@@ -264,7 +284,37 @@ VENV_DIR=${VENV_DIR}
 SSH_USER=${SSH_USER}
 CASSANDRA_HOSTS=${cass_hosts}
 CASSANDRA_CQL_PORT=${CASSANDRA_CQL_PORT}
+HDFS_URI=${HDFS_URI}
+HDFS_CHECKPOINT_ROOT=${HDFS_CHECKPOINT_ROOT}
+HDFS_REPLICATION=${HDFS_REPLICATION}
 EOF
+}
+
+# hdfs_hosts   NameNode host, then the DataNode hosts, each once
+hdfs_hosts() {
+    local _dn
+    read -r -a _dn <<< "${HDFS_DATANODE_HOSTS}"
+    printf '%s\n' "${HDFS_NAMENODE_HOST}" "${_dn[@]}" | awk 'NF && !seen[$0]++'
+}
+
+# is_hdfs_uri <path>   0 for an hdfs://host[:port]/path checkpoint URI (submit.sh / drain_test.sh -k)
+is_hdfs_uri() { [[ "$1" == hdfs://* ]]; }
+
+# hdfs_uri_host <uri> / hdfs_uri_port <uri> / hdfs_uri_path <uri>   parts of hdfs://host[:port]/path (port default 8020)
+hdfs_uri_host() { local r="${1#hdfs://}"; r="${r%%/*}"; echo "${r%%:*}"; }
+hdfs_uri_port() { local r="${1#hdfs://}"; r="${r%%/*}"; [[ "${r}" == *:* ]] && echo "${r##*:}" || echo 8020; }
+hdfs_uri_path() { local r="${1#hdfs://}"; [[ "${r}" == */* ]] && echo "/${r#*/}" || echo /; }
+
+# valid_hdfs_uri <uri>   hdfs://<host>[:<port>]/<at least one path component>, no '..', no spaces
+valid_hdfs_uri() {
+    [[ "$1" =~ ^hdfs://[A-Za-z0-9._-]+(:[0-9]+)?/[^[:space:]]+$ ]] && [[ "$1" != *"/../"* && "$1" != */.. ]]
+}
+
+# hdfs_on <user> <hdfs args...>   run the hdfs CLI (wrapper /usr/local/bin/hdfs from 50_hdfs.sh) as <user> on the
+# NameNode VM, e.g.  hdfs_on hdfs dfsadmin -report -live
+hdfs_on() {
+    local user="$1"; shift
+    rsh "${HDFS_NAMENODE_HOST}" "sudo -n -u ${user} /usr/local/bin/hdfs $*"
 }
 
 # ---- ssh helpers (admin machine) -----------------------------------------------------------
