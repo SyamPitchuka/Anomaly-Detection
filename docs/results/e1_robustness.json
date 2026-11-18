@@ -1,0 +1,271 @@
+{
+  "experiment": "E1 robustness",
+  "source": "smd",
+  "seeds": {
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "rows": [
+      {
+        "seed": 0,
+        "composite_f1": 0.518439743248889,
+        "faults_caught": 175,
+        "faults": 326,
+        "event_recall": 0.5368098159509203,
+        "alarm_precision": 0.5012853470437018,
+        "false_alarms_per_machine_day": 1.1828266576340078,
+        "windows_flagged": 1167,
+        "threshold": 2.0535065179459555,
+        "epochs": 42,
+        "best_epoch": 37
+      },
+      {
+        "seed": 1,
+        "composite_f1": 0.5152305384753527,
+        "faults_caught": 175,
+        "faults": 326,
+        "event_recall": 0.5368098159509203,
+        "alarm_precision": 0.49531914893617024,
+        "false_alarms_per_machine_day": 1.2051824879329325,
+        "windows_flagged": 1175,
+        "threshold": 1.9053535808210873,
+        "epochs": 50,
+        "best_epoch": 48
+      },
+      {
+        "seed": 2,
+        "composite_f1": 0.5148191560616209,
+        "faults_caught": 172,
+        "faults": 326,
+        "event_recall": 0.5276073619631901,
+        "alarm_precision": 0.5026362038664324,
+        "false_alarms_per_machine_day": 1.1503090862901177,
+        "windows_flagged": 1138,
+        "threshold": 2.052058374504748,
+        "epochs": 47,
+        "best_epoch": 42
+      }
+    ],
+    "runtime_min": 6.6965788766669
+  },
+  "holdout": {
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "fit_fraction": 0.8,
+    "global": [
+      {
+        "seed": 0,
+        "composite_f1": 0.4867838978373651,
+        "faults_caught": 130,
+        "faults": 326,
+        "event_recall": 0.3987730061349693,
+        "alarm_precision": 0.6246458923512748,
+        "false_alarms_per_machine_day": 0.5385722753831823,
+        "windows_flagged": 706,
+        "threshold": 8.106149544874674,
+        "epochs": 50,
+        "best_epoch": 48,
+        "fit_windows": 113326,
+        "held_out_windows": 28343
+      },
+      {
+        "seed": 1,
+        "composite_f1": 0.5033881742945459,
+        "faults_caught": 139,
+        "faults": 326,
+        "event_recall": 0.4263803680981595,
+        "alarm_precision": 0.6143437077131259,
+        "false_alarms_per_machine_day": 0.5792192395630451,
+        "windows_flagged": 739,
+        "threshold": 7.421739931554912,
+        "epochs": 50,
+        "best_epoch": 49,
+        "fit_windows": 113326,
+        "held_out_windows": 28343
+      },
+      {
+        "seed": 2,
+        "composite_f1": 0.525511448494305,
+        "faults_caught": 153,
+        "faults": 326,
+        "event_recall": 0.46932515337423314,
+        "alarm_precision": 0.5969802555168409,
+        "false_alarms_per_machine_day": 0.7052248285206199,
+        "windows_flagged": 861,
+        "threshold": 4.524188633344979,
+        "epochs": 50,
+        "best_epoch": 50,
+        "fit_windows": 113326,
+        "held_out_windows": 28343
+      }
+    ],
+    "per-machine": [
+      {
+        "seed": 0,
+        "composite_f1": 0.4489570005319226,
+        "faults_caught": 167,
+        "faults": 326,
+        "event_recall": 0.5122699386503068,
+        "alarm_precision": 0.3995726495726496,
+        "false_alarms_per_machine_day": 1.7132695401812177,
+        "windows_flagged": 1404,
+        "threshold_median": 1.5525719583064266,
+        "threshold_min": 0.3846136979355363,
+        "threshold_max": 14444.2791247195
+      },
+      {
+        "seed": 1,
+        "composite_f1": 0.46438424151915264,
+        "faults_caught": 180,
+        "faults": 326,
+        "event_recall": 0.5521472392638037,
+        "alarm_precision": 0.40069444444444446,
+        "false_alarms_per_machine_day": 1.7539165043610805,
+        "windows_flagged": 1440,
+        "threshold_median": 1.4218087684250151,
+        "threshold_min": 0.26109304066090144,
+        "threshold_max": 16436.07746602106
+      },
+      {
+        "seed": 2,
+        "composite_f1": 0.4669655839875072,
+        "faults_caught": 174,
+        "faults": 326,
+        "event_recall": 0.5337423312883436,
+        "alarm_precision": 0.4150397686189443,
+        "false_alarms_per_machine_day": 1.6441697010754508,
+        "windows_flagged": 1383,
+        "threshold_median": 1.4598188243833194,
+        "threshold_min": 0.3976135951788871,
+        "threshold_max": 14915.939191582309
+      }
+    ],
+    "runtime_min": 3.6440438100001
+  },
+  "bootstrap": {
+    "scores_dir": "data/robust/e1_rebuild/data/scores/source=smd",
+    "windows": 141708,
+    "machines": 28,
+    "pca_threshold": 1.0817210667867942,
+    "pca_threshold_source": "data/robust/e1_rebuild/models/pca_smd/thresholds.json",
+    "n_boot": 1000,
+    "seed": 0,
+    "detectors": {
+      "kmeans": {
+        "name": "Tier 2 KMeans (recenter 24)",
+        "point": {
+          "composite_f1": 0.595855984388196,
+          "event_recall": 0.6595092024539877,
+          "alarm_precision": 0.5434083601286174,
+          "false_alarms_per_machine_day": 3.4631213481243117,
+          "faults_caught": 215,
+          "faults": 326,
+          "windows_flagged": 3732
+        },
+        "matches_e1": true,
+        "composite_f1_ci": [
+          0.4943723999159446,
+          0.6765156163683849
+        ],
+        "composite_f1_boot_mean": 0.5910484325895973,
+        "false_alarms_ci": [
+          2.168360506592013,
+          4.980034402863118
+        ]
+      },
+      "pca": {
+        "name": "Tier 2b PCA (recenter 24)",
+        "point": {
+          "composite_f1": 0.5542326157568286,
+          "event_recall": 0.5613496932515337,
+          "alarm_precision": 0.5472937467157121,
+          "false_alarms_per_machine_day": 3.5017359640951815,
+          "faults_caught": 183,
+          "faults": 326,
+          "windows_flagged": 3806
+        },
+        "matches_e1": true,
+        "composite_f1_ci": [
+          0.43859010239045637,
+          0.6456206452872456
+        ],
+        "composite_f1_boot_mean": 0.5501650575503321,
+        "false_alarms_ci": [
+          2.0914601072386456,
+          5.302032448924101
+        ]
+      },
+      "ae_v2": {
+        "name": "Tier 3 AE v2",
+        "point": {
+          "composite_f1": 0.5245440385871476,
+          "event_recall": 0.5521472392638037,
+          "alarm_precision": 0.49956933677863913,
+          "false_alarms_per_machine_day": 1.1807943094250148,
+          "faults_caught": 180,
+          "faults": 326,
+          "windows_flagged": 1161
+        },
+        "matches_e1": false,
+        "composite_f1_ci": [
+          0.4700935817206133,
+          0.5853958552751363
+        ],
+        "composite_f1_boot_mean": 0.5248864100792395,
+        "false_alarms_ci": [
+          0.8783956182341329,
+          1.4978745651408487
+        ]
+      }
+    },
+    "pairs": {
+      "kmeans-pca": {
+        "f1_diff_point": 0.0416233686313674,
+        "f1_diff_ci": [
+          -0.0035487499697392454,
+          0.09084532376418694
+        ],
+        "share_first_higher_f1": 0.964,
+        "fa_diff_point": -0.03861461597086979,
+        "fa_diff_ci": [
+          -0.8594563444666657,
+          0.8277176807923935
+        ]
+      },
+      "kmeans-ae_v2": {
+        "f1_diff_point": 0.07131194580104838,
+        "f1_diff_ci": [
+          -0.018114465627812423,
+          0.1437158338417142
+        ],
+        "share_first_higher_f1": 0.939,
+        "fa_diff_point": 2.2823270386992967,
+        "fa_diff_ci": [
+          1.1241385137407378,
+          3.587704266026607
+        ]
+      },
+      "pca-ae_v2": {
+        "f1_diff_point": 0.029688577169680985,
+        "f1_diff_ci": [
+          -0.06925378049696447,
+          0.10624463893458289
+        ],
+        "share_first_higher_f1": 0.723,
+        "fa_diff_point": 2.3209416546701664,
+        "fa_diff_ci": [
+          1.0737617416315826,
+          3.854216165473402
+        ]
+      }
+    },
+    "share_ranking_kmeans_pca_ae": 0.69,
+    "share_ae_fewest_false_alarms": 1.0,
+    "runtime_min": 0.020011803333666953
+  }
+}

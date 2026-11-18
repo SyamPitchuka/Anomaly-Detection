@@ -6,6 +6,7 @@ Run from the repo root:
     python src/detection/autoencoder.py --epochs 10
     python src/detection/autoencoder.py --flat-std 0 --inputs mean --recenter 0 --adaptive 0   # v1, the 0.360 run
     python src/detection/autoencoder.py --threshold per-machine --std-floor 0.05       # variant (b), docs/ae_ablation.md
+    python src/detection/autoencoder.py --seed 0 --out-dir models/robust/ae_seed0   # other seed, production untouched
 
 Steps:
 1. Read data/raw/source=smd/*.parquet (fake.parquet is skipped) and build 5-minute tumbling windows per
@@ -38,6 +39,8 @@ Steps:
    median detection delay in minutes, PR-AUC of ae_score, and point-adjusted event F1 (reference, generous).
 
 Outputs: models/ae_smd/model.pt, scaler.json, threshold.json, history.json.
+--seed N (default 42) sets the training seed. --out-dir DIR (default: none) writes the model files to DIR and the
+test scores to DIR/scores/source=<source>/scores.parquet instead of models/ae_<source>/ and data/scores_ae/.
 """
 import argparse
 import json
@@ -448,7 +451,10 @@ def _print_report(per_machine: pd.DataFrame, overall: dict) -> None:
 def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS,
         threshold_mode: str = "global", std_floor: float = STD_FLOOR,
         root: Path = ROOT, verbose: bool = True, flat_std: float = FLAT_STD,
-        inputs: str = DEFAULT_INPUTS, recenter: int = RECENTER, adaptive: int = ADAPTIVE) -> dict:
+        inputs: str = DEFAULT_INPUTS, recenter: int = RECENTER, adaptive: int = ADAPTIVE,
+        seed: int = SEED, model_dir: Path | None = None, scores_dir: Path | None = None) -> dict:
+    """Train, threshold, save and evaluate. model_dir (default models/ae_<source>) gets the model files,
+    scores_dir (default data/scores_ae/source=<source>) gets scores.parquet."""
     metrics = METRICS[source]
     aggs = INPUTS[inputs]
     features = feature_names(metrics, aggs)
@@ -462,7 +468,7 @@ def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS
         scalers[entity]["masked"] = masked
     centers = recenter_centers(meta, X, scalers, recenter) if recenter else None
     Z, mask = standardise(meta, X, scalers, feature_metrics, centers)
-    model, history = train(Z[is_train], mask[is_train], epochs=epochs, verbose=verbose)
+    model, history = train(Z[is_train], mask[is_train], epochs=epochs, seed=seed, verbose=verbose)
 
     ae_score, top = score(model, Z, mask, metrics)
     adaptive_info = ({"windows": adaptive, "percentile": ADAPTIVE_PERCENTILE, "min_periods": max(1, adaptive // 2)}
@@ -471,7 +477,7 @@ def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS
     limit = adaptive_limits(meta, ae_score, adaptive) if adaptive else None
     ae_flag = flags(meta, ae_score, threshold_info, threshold_mode, limit)
 
-    model_dir = root / S.MODELS["ae"].replace("<source>", source)
+    model_dir = root / S.MODELS["ae"].replace("<source>", source) if model_dir is None else Path(model_dir)
     model_dir.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "n_in": len(features), "hidden": list(HIDDEN),
                 "metrics": metrics, "inputs": inputs, "features": features,
@@ -485,11 +491,11 @@ def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS
     (model_dir / "history.json").write_text(json.dumps(history, indent=2))
 
     test = ~is_train
-    out_dir = root / SCORES_AE_DIR / f"source={source}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    scores_dir = root / SCORES_AE_DIR / f"source={source}" if scores_dir is None else Path(scores_dir)
+    scores_dir.mkdir(parents=True, exist_ok=True)
     test_meta = meta[test].reset_index(drop=True)
     table = scores_table(test_meta, ae_score[test], ae_flag[test], [top[i] for i in np.flatnonzero(test)])
-    pq.write_table(table, out_dir / "scores.parquet")
+    pq.write_table(table, scores_dir / "scores.parquet")
 
     best = min(history, key=lambda h: h["val_loss"])
     print(f"training: {len(history)} epochs run, best epoch {best['epoch']} "
@@ -502,7 +508,7 @@ def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS
     print(f"threshold mode {threshold_mode}, std floor {std_floor}: p{THRESHOLD_PERCENTILE} of train ae_score "
           f"x {THRESHOLD_FACTOR}; global {threshold_info['global']:.5f}, per machine min "
           f"{per.min():.5f} / median {np.median(per):.5f} / max {per.max():.5f}")
-    print(f"wrote {table.num_rows} test windows to {out_dir / 'scores.parquet'} ({int(ae_flag[test].sum())} flagged)")
+    print(f"wrote {table.num_rows} test windows to {scores_dir / 'scores.parquet'} ({int(ae_flag[test].sum())} flagged)")
 
     per_machine, overall = evaluate(meta, ae_flag, ae_score)
     _print_report(per_machine, overall)
@@ -529,9 +535,15 @@ def main() -> int:
                         help="also require ae_score > p99 of the machine's previous N scores, "
                              "default 288 = one day (0 = off)")
     parser.add_argument("--root", type=Path, default=ROOT, help="repo root that contains data/ and models/")
+    parser.add_argument("--seed", type=int, default=SEED, help=f"training seed (default {SEED})")
+    parser.add_argument("--out-dir", type=Path, default=None,
+                        help="write model files here and scores to <dir>/scores/ (default: models/ae_<source>/ "
+                             "and data/scores_ae/)")
     args = parser.parse_args()
     run(args.source, args.sample, args.epochs, args.threshold, args.std_floor, args.root,
-        flat_std=args.flat_std, inputs=args.inputs, recenter=args.recenter, adaptive=args.adaptive)
+        flat_std=args.flat_std, inputs=args.inputs, recenter=args.recenter, adaptive=args.adaptive,
+        seed=args.seed, model_dir=args.out_dir,
+        scores_dir=None if args.out_dir is None else args.out_dir / "scores" / f"source={args.source}")
     return 0
 
 
