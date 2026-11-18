@@ -363,6 +363,64 @@ def test_experiment_switches_reach_spark(monkeypatch, tmp_path):
         M.main(["--state-store", "leveldb"])
 
 
+def test_checkpoint_uri_helpers():
+    uri = "hdfs://spark-master:9000/spark-anomaly/checkpoints/e7/r1/score/source=smd"
+    assert M.is_uri(uri) and M.checkpoint_location(uri + "/") == uri
+    from pathlib import Path
+    assert not M.is_uri(Path("/srv/x")) and not M.is_uri("/srv/x") and not M.is_uri("C://x")
+    assert M.checkpoint_location(Path("/srv/x")) == "/srv/x" and M.checkpoint_location("/srv/x") == "/srv/x"
+
+
+def test_hdfs_checkpoint_reaches_spark_unmangled_and_reset_uses_the_hadoop_api(monkeypatch, tmp_path):
+    """An hdfs:// --checkpoint-dir (or SCORE_CHECKPOINT_DIR via score_entry) is given to Spark as is; --reset
+    removes the local outputs with rmtree and the HDFS checkpoint with delete_hadoop_path after the session exists."""
+    from src.streaming import features_job
+    import importlib.util
+
+    (tmp_path / "model.pt").write_bytes(b"")
+    for name, sub in (("AE_DIR", ""), ("OUTPUT_DIR", "out"), ("LATENCY_ROOT", "lat")):
+        monkeypatch.setattr(M, name, tmp_path / sub if sub else tmp_path)
+    (tmp_path / "out").mkdir()
+    uri = "hdfs://spark-master:9000/ck/score/source=smd"
+    events = []
+
+    class Stop(Exception):
+        pass
+
+    class FakeWriter:
+        def option(self, k, v):
+            events.append(("option", k, v))
+            raise Stop
+
+    class FakeFrame:
+        writeStream = type("WS", (), {"foreachBatch": lambda self, f: FakeWriter()})()
+
+    class FakeSpark:
+        sparkContext = type("SC", (), {"setLogLevel": lambda self, level: None})()
+        conf = type("Conf", (), {"set": lambda self, k, v: None})()
+
+    monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: (events.append("spark"), FakeSpark())[1])
+    monkeypatch.setattr(features_job, "read_telemetry", lambda spark, cap=None, **kw: "telemetry")
+    monkeypatch.setattr(M, "build_scores", lambda t: FakeFrame())
+    monkeypatch.setattr(M, "delete_hadoop_path", lambda spark, u: (events.append(("delete", u)), True)[1])
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka", "--reset", "--checkpoint-dir", uri])
+    assert events == ["spark", ("delete", uri), ("option", "checkpointLocation", uri)]
+    assert not (tmp_path / "out").exists()
+
+    # score_entry: SCORE_CHECKPOINT_DIR=hdfs://... stays a str (a Path would make it 'hdfs:/...')
+    spec = importlib.util.spec_from_file_location("score_entry", M.ROOT / "infra" / "cluster" / "score_entry.py")
+    entry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entry)
+    events.clear()
+    monkeypatch.setattr(M, "CHECKPOINT_DIR", tmp_path / "default")
+    monkeypatch.setenv("SCORE_CHECKPOINT_DIR", uri)
+    monkeypatch.delenv("CLUSTER_KAFKA_BOOTSTRAP", raising=False)
+    with pytest.raises(Stop):
+        entry.main(["--input", "kafka"])
+    assert M.CHECKPOINT_DIR == uri and events == ["spark", ("option", "checkpointLocation", uri)]
+
+
 def test_cassandra_switch(monkeypatch, tmp_path):
     """--cassandra HOSTS [--cassandra-cl CL] opens the store (schema first) before the query; unset = no store;
     --cassandra-cl alone, a bad level or --read-only with --cassandra are refused."""

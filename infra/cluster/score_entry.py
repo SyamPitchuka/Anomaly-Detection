@@ -6,6 +6,7 @@ runs, exactly as run_job.py does, so score_job.py itself is not edited:
 
     CLUSTER_KAFKA_BOOTSTRAP   full broker list, e.g. spark-master:9092   -> contracts.schemas.KAFKA_BOOTSTRAP
     SCORE_CHECKPOINT_DIR      checkpoint directory on the shared storage -> score_job.CHECKPOINT_DIR
+                              (a local path becomes a Path; an hdfs:// URI stays a str, see score_job.is_uri)
 
 Everything after the script name goes to score_job's own argument parser (--input, --max-seconds,
 --max-offsets-per-trigger N, ...) unchanged; submit.sh -m N adds --max-offsets-per-trigger N.
@@ -30,8 +31,9 @@ def main(argv=None) -> int:
         S.KAFKA_BOOTSTRAP = bootstrap
     checkpoint = os.environ.get("SCORE_CHECKPOINT_DIR")
     if checkpoint:
-        score_job.CHECKPOINT_DIR = Path(checkpoint)
-    print(f"score_entry: Kafka {S.KAFKA_BOOTSTRAP}, checkpoint {score_job.CHECKPOINT_DIR.as_posix()}", flush=True)
+        score_job.CHECKPOINT_DIR = checkpoint if score_job.is_uri(checkpoint) else Path(checkpoint)
+    print(f"score_entry: Kafka {S.KAFKA_BOOTSTRAP}, checkpoint {score_job.checkpoint_location(score_job.CHECKPOINT_DIR)}",
+          flush=True)
     return score_job.main(sys.argv[1:] if argv is None else argv)
 
 

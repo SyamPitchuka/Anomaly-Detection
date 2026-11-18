@@ -399,3 +399,23 @@ Not part of `deploy.sh all`; the pipeline runs exactly as before without it.
 - `score_job.py --cassandra spark-w2,spark-w5 [--cassandra-cl ONE|QUORUM|ALL]` (through `submit.sh ... --`) also
   upserts each batch's anomalies; unset = no Cassandra.
 - `experiments/e6_cap.py`: the CAP experiment (stops and restarts one node over ssh) -> `docs/results/e6_cap.md/.json`.
+
+## Optional: HDFS checkpoint store (E7)
+
+Not part of `deploy.sh all`; without `-k hdfs://...` every run keeps its checkpoints on NFS as before.
+
+- `bash infra/cluster/deploy.sh hdfs` installs Apache Hadoop 3.3.6 (tarball, sha512-checked, via the outbound proxy)
+  with `50_hdfs.sh`: NameNode on `HDFS_NAMENODE_HOST` (default spark-master, RPC 9000, 1 GB heap, formatted once),
+  DataNodes on `HDFS_DATANODE_HOSTS` (default `spark-master spark-w2 spark-w5`, 512 MB heap; the 8 GB workers have
+  no room), `dfs.replication = 2`, data on local disk under `/var/lib/hadoop-hdfs`, systemd units `hadoop-namenode` /
+  `hadoop-datanode` (user `hdfs`), wrapper `/usr/local/bin/hdfs`, and the checkpoint root
+  `/spark-anomaly/checkpoints` owned by `spark`. A DataNode is declared dead after 90 s without heartbeats.
+- `bash infra/cluster/health_check.sh hdfs`: NameNode up and out of safe mode, every DataNode live, and a test file
+  written by `spark` with replication 2, read back, fsck-checked and deleted.
+- `submit.sh -k hdfs://spark-master:9000/spark-anomaly/checkpoints/<name>` (also `drain_test.sh -k`, and
+  `e2_scaling_sweep.py --checkpoint-dir`, with `{run_id}`): the full URI goes to Spark, so the Spark nodes need no
+  Hadoop config; submit.sh adds `--conf spark.hadoop.dfs.replication=2` (the bundled client would use 3) and
+  `score_job --reset` deletes the HDFS checkpoint with the Hadoop FileSystem API.
+- `experiments/e7_hdfs.sh` (+ `e7_report.py`): clean drain, the same drain with the spark-w5 DataNode stopped
+  after batch 3 (fsck sampled until under-replication shows, then restart until HEALTHY), and HDFS vs NFS throughput
+  -> `docs/results/e7_hdfs.md/.json`. The NameNode remains a single point of failure (HA NameNode: future work).
