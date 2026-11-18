@@ -1,0 +1,90 @@
+{
+  "run_id": "e6_cassandra_quorum",
+  "ts_utc": "2026-11-18T00:02:09Z",
+  "status": "drained",
+  "topic": "telemetry.smd",
+  "total_cores": 10,
+  "executors": 5,
+  "cores": 2,
+  "max_offsets_per_trigger": 200000,
+  "replicate": null,
+  "topic_partitions": 32,
+  "shuffle_partitions": 20,
+  "trigger": "0_seconds",
+  "job_args": "--cassandra spark-w2,spark-w5 --cassandra-cl QUORUM",
+  "checkpoint_dir": null,
+  "allow_local_checkpoint": 0,
+  "tag": "e6",
+  "records": 1416825,
+  "consumed": 1416825,
+  "batches": 8,
+  "drain_s": 76.176,
+  "records_per_s": 18599.36200378072,
+  "steady_records_per_s": 24310.484676549324,
+  "batch_mean_s": 9.518125,
+  "batch_p95_s": 26.122,
+  "first_batch_s": 26.122,
+  "wall_s": 97.44565234375,
+  "input_rows": 1416825,
+  "executors_seen": 5,
+  "executors_max_active": 5,
+  "executor_cores_max": 10,
+  "batches_detail": [
+    {
+      "batch": 0,
+      "timestamp": "2026-11-18T00:00:48.250Z",
+      "rows": 199988,
+      "duration_s": 26.122,
+      "offset": 199988
+    },
+    {
+      "batch": 1,
+      "timestamp": "2026-11-18T00:01:14.394Z",
+      "rows": 199986,
+      "duration_s": 8.67,
+      "offset": 399974
+    },
+    {
+      "batch": 2,
+      "timestamp": "2026-11-18T00:01:23.065Z",
+      "rows": 199989,
+      "duration_s": 7.738,
+      "offset": 599963
+    },
+    {
+      "batch": 3,
+      "timestamp": "2026-11-18T00:01:30.804Z",
+      "rows": 199989,
+      "duration_s": 8.14,
+      "offset": 799952
+    },
+    {
+      "batch": 4,
+      "timestamp": "2026-11-18T00:01:38.946Z",
+      "rows": 199991,
+      "duration_s": 7.881,
+      "offset": 999943
+    },
+    {
+      "batch": 5,
+      "timestamp": "2026-11-18T00:01:46.830Z",
+      "rows": 199992,
+      "duration_s": 6.392,
+      "offset": 1199935
+    },
+    {
+      "batch": 6,
+      "timestamp": "2026-11-18T00:01:53.223Z",
+      "rows": 199989,
+      "duration_s": 6.738,
+      "offset": 1399924
+    },
+    {
+      "batch": 7,
+      "timestamp": "2026-11-18T00:01:59.962Z",
+      "rows": 16901,
+      "duration_s": 4.464,
+      "offset": 1416825
+    }
+  ]
+}
