@@ -1,0 +1,202 @@
+{
+  "experiment": "E6 CAP",
+  "started_utc": "2026-11-18T00:04:02Z",
+  "hosts": [
+    "spark-w2",
+    "spark-w5"
+  ],
+  "victim": "spark-w5",
+  "rf": 2,
+  "rows_per_level": 1000,
+  "keyspace": "anomaly",
+  "table": "e6_cap",
+  "phases": [
+    {
+      "phase": "both_up",
+      "nodes_up": [
+        "spark-w2",
+        "spark-w5"
+      ],
+      "results": [
+        {
+          "cl": "ONE",
+          "required_replicas": 1,
+          "write": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 1.376,
+            "p95_ms": 2.506,
+            "errors": {}
+          },
+          "read": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 1.463,
+            "p95_ms": 2.582,
+            "errors": {},
+            "found": 1000
+          }
+        },
+        {
+          "cl": "QUORUM",
+          "required_replicas": 2,
+          "write": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 2.1,
+            "p95_ms": 3.347,
+            "errors": {}
+          },
+          "read": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 2.361,
+            "p95_ms": 3.47,
+            "errors": {},
+            "found": 1000
+          }
+        },
+        {
+          "cl": "ALL",
+          "required_replicas": 2,
+          "write": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 1.975,
+            "p95_ms": 2.794,
+            "errors": {}
+          },
+          "read": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 2.152,
+            "p95_ms": 3.068,
+            "errors": {},
+            "found": 1000
+          }
+        }
+      ]
+    },
+    {
+      "phase": "one_down",
+      "nodes_up": [
+        "spark-w2"
+      ],
+      "results": [
+        {
+          "cl": "ONE",
+          "required_replicas": 1,
+          "write": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 1.138,
+            "p95_ms": 2.128,
+            "errors": {}
+          },
+          "read": {
+            "attempted": 1000,
+            "ok": 1000,
+            "failed": 0,
+            "success_rate": 1.0,
+            "p50_ms": 1.277,
+            "p95_ms": 2.141,
+            "errors": {},
+            "found": 1000
+          }
+        },
+        {
+          "cl": "QUORUM",
+          "required_replicas": 2,
+          "write": {
+            "attempted": 1000,
+            "ok": 0,
+            "failed": 1000,
+            "success_rate": 0.0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "errors": {
+              "NoHostAvailable": 1000
+            }
+          },
+          "read": {
+            "attempted": 1000,
+            "ok": 0,
+            "failed": 1000,
+            "success_rate": 0.0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "errors": {
+              "NoHostAvailable": 1000
+            },
+            "found": 0
+          }
+        },
+        {
+          "cl": "ALL",
+          "required_replicas": 2,
+          "write": {
+            "attempted": 1000,
+            "ok": 0,
+            "failed": 1000,
+            "success_rate": 0.0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "errors": {
+              "NoHostAvailable": 1000
+            }
+          },
+          "read": {
+            "attempted": 1000,
+            "ok": 0,
+            "failed": 1000,
+            "success_rate": 0.0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "errors": {
+              "NoHostAvailable": 1000
+            },
+            "found": 0
+          }
+        }
+      ]
+    }
+  ],
+  "recovery": {
+    "survivor": "spark-w2",
+    "victim": "spark-w5",
+    "stop_seconds": 7.7,
+    "restart_seconds": 20.4,
+    "pending_hints_before_restart": 0,
+    "hints_delivered": true,
+    "hints_wait_seconds": 5.6,
+    "expected_rows": 4000,
+    "isolated_counts": true,
+    "victim_count_after_hints": 4000,
+    "repair": {
+      "ok": true,
+      "seconds": 2.5,
+      "output_tail": "1319889,3546330832133670684], (4622086713359250223,5358002406070143864], (7187652453786070342,7680895219198337494], (-5611311310705622611,-4956692425589593493], (-3180204097733786219,-2736635109647097193]] finished (progress: 57%)\n[2026-11-18 00:05:28,169] Repair completed successfully\n[2026-11-18 00:05:28,171] Repair command #1 finished in 0 seconds\n[2026-11-18 00:05:28,179] condition satisfied queried for parent session status and discovered repair completed.\n[2026-11-18 00:05:28,180] Repair completed successfully\nmkdir: cannot create directory \u2018/opt/cassandra/bin/../logs\u2019: Permission denied"
+    },
+    "replica_counts_after_repair": {
+      "spark-w2": 4000,
+      "spark-w5": 4000
+    },
+    "count_all_after_repair": 4000,
+    "converged": true
+  },
+  "dry_run": false
+}

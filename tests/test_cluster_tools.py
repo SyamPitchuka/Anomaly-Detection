@@ -350,3 +350,40 @@ def test_use_outbound_proxy_sets_env_and_apt_config_and_is_a_noop_without_proxy(
     out = _lib(script, OUTBOUND_PROXY_HOST="")
     assert out.returncode == 0, out.stderr
     assert "proxy=[]" in out.stdout and "no-apt-file" in out.stdout
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_cassandra_defaults_runtime_env_and_print_config():
+    out = _lib('source ./lib.sh && render_runtime_env')
+    assert out.returncode == 0, out.stderr
+    assert "CASSANDRA_HOSTS=spark-w2,spark-w5" in out.stdout.splitlines()
+    out = _lib('bash ./40_cassandra.sh --print-config')
+    assert out.returncode == 0, out.stderr
+    cfg = dict(line.split("=", 1) for line in out.stdout.strip().splitlines())
+    assert cfg["CASSANDRA_HOSTS"] == "spark-w2 spark-w5"
+    assert cfg["CASSANDRA_VERSION"].startswith("5.0.")
+    assert cfg["CASSANDRA_URL"] == (f"https://archive.apache.org/dist/cassandra/{cfg['CASSANDRA_VERSION']}/"
+                                    f"apache-cassandra-{cfg['CASSANDRA_VERSION']}-bin.tar.gz")
+    assert (cfg["CASSANDRA_HEAP"], cfg["CASSANDRA_CLUSTER_NAME"]) == ("2G", "spark-anomaly")
+    # a cluster.env without the Cassandra lines still gets the defaults from lib.sh
+    script = ('tmp_env="$(mktemp)"; grep -v "^CASSANDRA_" cluster.env.example > "$tmp_env"; '
+              'export CLUSTER_ENV="$tmp_env"; source ./lib.sh && echo "$CASSANDRA_HOSTS|$CASSANDRA_HEAP"')
+    out = _lib(script)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == "spark-w2 spark-w5|2G"
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_cassandra_is_an_extra_phase_not_part_of_all():
+    deploy = (CLUSTER / "deploy.sh").read_text(encoding="utf-8")
+    assert "cassandra) phase_cassandra ;;" in deploy
+    assert "phases=(ssh env proxy prereqs nfs repo kafka spark topics health)" in deploy
+    health = (CLUSTER / "health_check.sh").read_text(encoding="utf-8")
+    assert "cassandra) check_cassandra ;;" in health
+    assert "all) check_kafka; check_spark; check_storage; check_memory ;;" in health
+    # count_un counts only UN lines of nodetool status
+    status = "UN  172.16.0.6  1 KiB  16  100%  id1  rack1\nDN  172.17.0.6  1 KiB  16  100%  id2  rack1\n"
+    out = _lib(f'source ./lib.sh; eval "$(sed -n \'/^count_un()/p\' health_check.sh)"; '
+               f'count_un "$(printf \'{status}\')"')
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == "1"

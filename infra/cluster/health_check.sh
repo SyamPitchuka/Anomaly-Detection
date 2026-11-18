@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Cluster health checks. Run from the admin machine (ssh to the VMs) - or on any VM that can ssh to the others.
 #
-#   bash infra/cluster/health_check.sh [kafka|spark|storage|memory|all]
+#   bash infra/cluster/health_check.sh [kafka|spark|storage|memory|all|cassandra]
 #
 # Prints OK / FAIL lines and ends with PASS or FAIL (exit 0 / 1), like the tools/check_*.py gauges.
 # The deeper end-to-end checks are Python:  check_kafka_cluster.py  and  check_spark_cluster.py (see README).
 # 'memory' is most meaningful while a job is running (the VMs have only 8 GB each).
 # KAFKA_BROKER_COUNT (1 or 3) decides how many containers / ports / KRaft voters are expected.
+# 'cassandra' (optional store, not part of 'all'): every CASSANDRA_HOSTS node runs the unit, accepts CQL, and
+# 'nodetool status' on each node lists all of them as UN (Up / Normal).
 set -uo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -151,6 +153,33 @@ check_memory() {
     done < <(all_hosts)
 }
 
+# count_un <nodetool status output>   number of nodes in state UN (Up, Normal)
+count_un() { grep -cE '^UN[[:space:]]' <<< "$1" || true; }
+
+check_cassandra() {
+    local h hosts want state out n
+    read -r -a hosts <<< "${CASSANDRA_HOSTS}"
+    want="${#hosts[@]}"
+    echo "--- Cassandra (${CASSANDRA_HOSTS}; cluster ${CASSANDRA_CLUSTER_NAME}; CQL ${CASSANDRA_CQL_PORT})"
+    [[ "${want}" -ge 1 ]] || { bad "CASSANDRA_HOSTS is empty"; return; }
+    for h in "${hosts[@]}"; do
+        state="$(rsh "${h}" "systemctl is-active cassandra" 2> /dev/null || true)"
+        if [[ "${state}" == "active" ]]; then ok "${h}: cassandra.service active"; else bad "${h}: cassandra.service is '${state:-unknown}'"; fi
+        if wait_port "${h}" "${CASSANDRA_CQL_PORT}" 6; then
+            ok "${h}:${CASSANDRA_CQL_PORT} accepts CQL connections"
+        else
+            bad "${h}:${CASSANDRA_CQL_PORT} unreachable"
+        fi
+        if out="$(rsh "${h}" "${CASSANDRA_HOME}/bin/nodetool status" 2> /dev/null)"; then
+            n="$(count_un "${out}")"
+            echo "${out}" | grep -E '^[UD][NLJM][[:space:]]' | sed 's/^/     /'
+            if [[ "${n}" -eq "${want}" ]]; then ok "${h}: nodetool status: ${n} UN (want ${want})"; else bad "${h}: nodetool status: ${n} UN, want ${want}"; fi
+        else
+            bad "${h}: nodetool status failed"
+        fi
+    done
+}
+
 target="${1:-all}"
 case "${target}" in
     kafka) check_kafka ;;
@@ -158,7 +187,8 @@ case "${target}" in
     storage) check_storage ;;
     memory) check_memory ;;
     all) check_kafka; check_spark; check_storage; check_memory ;;
-    *) die "usage: health_check.sh [kafka|spark|storage|memory|all]" ;;
+    cassandra) check_cassandra ;;
+    *) die "usage: health_check.sh [kafka|spark|storage|memory|all|cassandra]" ;;
 esac
 
 if [[ "${fails}" -eq 0 ]]; then

@@ -8,6 +8,7 @@ Run from the repo root:
     python src/streaming/score_job.py --input files --once --tier1 v1     # also fill tier1_score/tier1_flag
     python src/streaming/score_job.py --input files --once --master local[2] --shuffle-partitions 4
     python src/streaming/score_job.py --input files --once --files-per-trigger 8   # 8 machines per batch
+    python src/streaming/score_job.py --input kafka --cassandra spark-w2,spark-w5 --cassandra-cl QUORUM
 
 Input: Kafka topic telemetry.smd parsed with contracts.schemas.TELEMETRY_JSON_DDL, or a readStream of the
 raw-layer Parquet files (one file per trigger, or --files-per-trigger N; fake.parquet skipped). 10-minute
@@ -58,6 +59,14 @@ Each query progress is also appended to data/latency_stream/progress.jsonl.
 Replicated machines (replay.py --replicate K, weak scaling): an entity_id <machine>-r<k> that the models do
 not know is scored with the models of <machine> (model_entity()), so every copy costs as much as a real
 machine. The output keeps the replica's own entity_id.
+
+Serving store (E6; default off): --cassandra HOSTS [--cassandra-cl ONE|QUORUM|ALL, default QUORUM] also upserts
+each micro-batch's anomalies (test windows with is_anomaly; already collected on the driver for the scores file)
+into Cassandra anomaly.anomalies_by_machine via src/serving/cassandra_store.py, after every other output of the
+batch. The key (entity_id, window_start) makes a replayed batch overwrite its own rows (exactly-once at the
+store). A failed upsert (e.g. CL ALL with a node down) fails the batch, so it is retried from the checkpoint and
+no anomaly is silently missing from the store. Each batch line is followed by the upsert count and time.
+Unset = no Cassandra, no cassandra-driver import, as before.
 
 Rate limit: --max-offsets-per-trigger N caps the Kafka records per micro-batch (maxOffsetsPerTrigger;
 default unset = no cap, Spark reads everything available). infra/cluster/drain_test.sh sets it.
@@ -120,6 +129,7 @@ import pyarrow.parquet as pq  # noqa: E402
 
 from contracts import schemas as S  # noqa: E402
 from src.detection import autoencoder as AE  # noqa: E402
+from src.serving import cassandra_store as CS  # noqa: E402  (driver imported only when --cassandra is set)
 
 SOURCE = "smd"
 METRICS = S.SMD_METRICS
@@ -516,6 +526,16 @@ def write_latency_file(pdf: pd.DataFrame, batch_id: int, emit_ts_ms: int, out_di
     return path
 
 
+def cassandra_upsert(store, pdf: pd.DataFrame) -> "CS.UpsertResult":
+    """--cassandra: upsert the anomalies (is_anomaly) among a batch's collected test windows."""
+    return store.upsert_anomalies(CS.anomaly_rows(pdf))
+
+
+def cassandra_log_line(res, consistency: str) -> str:
+    return (f"cassandra upserts {res.ok}/{res.rows} anomalies at CL {consistency} in {res.ms:.0f} ms"
+            + (f" (FAILED {res.failed}: {res.errors[0]})" if res.failed else ""))
+
+
 def positive_int(text: str) -> int:
     """argparse type: an integer >= 1."""
     value = int(text)
@@ -572,7 +592,16 @@ def main(argv=None) -> int:
     parser.add_argument("--state-store", choices=tuple(STATE_STORES), default="hdfs",
                         help="state store provider: hdfs (Spark default) or rocksdb (+ changelog checkpointing); "
                              "only on a fresh checkpoint")
+    parser.add_argument("--cassandra", type=CS.hosts_arg, default=None, metavar="HOSTS",
+                        help="also upsert each batch's anomalies into Cassandra (contact points, e.g. "
+                             "spark-w2,spark-w5); default: no Cassandra")
+    parser.add_argument("--cassandra-cl", type=CS.consistency_arg, default=None, metavar="ONE|QUORUM|ALL",
+                        help=f"consistency level of the Cassandra upserts (default {CS.DEFAULT_CL}; needs --cassandra)")
     args = parser.parse_args(argv)
+    if args.cassandra_cl is not None and args.cassandra is None:
+        parser.error("--cassandra-cl needs --cassandra")
+    if args.cassandra is not None and args.read_only:
+        parser.error("--cassandra cannot be combined with --read-only (nothing is scored)")
     checkpoint_dir = Path(args.checkpoint_dir if args.checkpoint_dir is not None else CHECKPOINT_DIR)
 
     if not (AE_DIR / "model.pt").exists():
@@ -613,8 +642,16 @@ def main(argv=None) -> int:
         telemetry, names = read_files(spark, args.machines, args.files_per_trigger)
         what = f"{len(names)} machine files ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"
 
+    store = None
+    if args.cassandra is not None:
+        store = CS.CassandraStore(args.cassandra, args.cassandra_cl or CS.DEFAULT_CL)
+        store.ensure_schema()
+        print(f"cassandra: {','.join(store.hosts)} keyspace {CS.KEYSPACE}.{CS.ANOMALIES_TABLE}, "
+              f"CL {store.consistency}", flush=True)
+
     stats: dict[int, tuple[int, int, int]] = {}
     steps_ms: dict[int, dict] = {}   # wall time of each foreachBatch step, printed with the batch line
+    cass_stats: dict[int, CS.UpsertResult] = {}   # --cassandra: upserts of each batch
 
     def write_batch(batch_df, batch_id):
         t = [time.perf_counter()]
@@ -649,6 +686,13 @@ def main(argv=None) -> int:
             if lat is not None:
                 write_latency_file(lat, batch_id, int(time.time() * 1000))
             mark("write_latency")
+            if store is not None:
+                res = cassandra_upsert(store, pdf)
+                cass_stats[batch_id] = res
+                mark("cassandra(anomalies)")
+                if res.failed:
+                    raise RuntimeError(f"cassandra: {res.failed}/{res.rows} anomaly upserts failed at CL "
+                                       f"{store.consistency} in batch {batch_id}: {res.errors}")
             stats[batch_id] = (n_windows, len(pdf), n_anom)
         finally:
             batch_df.unpersist()
@@ -698,6 +742,8 @@ def main(argv=None) -> int:
                 print(f"  durationMs {json.dumps(p.get('durationMs', {}), sort_keys=True)}", flush=True)
                 if p["batchId"] in steps_ms:
                     print(f"  foreachBatch steps ms {json.dumps(steps_ms[p['batchId']])}", flush=True)
+                if p["batchId"] in cass_stats:
+                    print(f"  {cassandra_log_line(cass_stats[p['batchId']], store.consistency)}", flush=True)
                 last_batch = p["batchId"]
 
     try:
@@ -720,6 +766,8 @@ def main(argv=None) -> int:
         query.stop()
     finally:
         spark.stop()
+        if store is not None:
+            store.close()
     return 0
 
 

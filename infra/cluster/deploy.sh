@@ -7,6 +7,9 @@
 #   bash infra/cluster/deploy.sh <phase>...   # one or more phases
 #
 # Phases: ssh  env  proxy  prereqs  nfs  repo  kafka  spark  topics  health
+# Optional phase, never part of 'all' (the pipeline does not need it):
+#   cassandra   Apache Cassandra 5.0.x on CASSANDRA_HOSTS (40_cassandra.sh), then waits for CQL on every node.
+#               Needs Java 17 on those hosts (00_prereqs.sh). Check with: health_check.sh cassandra
 # (proxy: tinyproxy on OUTBOUND_PROXY_HOST for workers without a public IP; a no-op when OUTBOUND_PROXY_HOST is empty)
 set -euo pipefail
 # shellcheck source=lib.sh
@@ -110,6 +113,19 @@ phase_topics() {
     (cd "${REPO_SRC}" && "${py}" infra/cluster/create_topics_cluster.py --bootstrap "${KAFKA_BOOTSTRAP}" --brokers "${KAFKA_BROKER_COUNT}")
 }
 
+phase_cassandra() {
+    local h hosts
+    read -r -a hosts <<< "${CASSANDRA_HOSTS}"
+    [[ "${#hosts[@]}" -ge 1 ]] || die "CASSANDRA_HOSTS is empty"
+    for h in "${hosts[@]}"; do
+        run_script "${h}" 40_cassandra.sh
+    done
+    for h in "${hosts[@]}"; do
+        wait_port "${h}" "${CASSANDRA_CQL_PORT}" 240             || die "no CQL on ${h}:${CASSANDRA_CQL_PORT} from $(hostname -s); see: ssh ${h} sudo journalctl -u cassandra"
+        log "cassandra CQL reachable: ${h}:${CASSANDRA_CQL_PORT}"
+    done
+}
+
 phase_health() {
     bash "${CLUSTER_DIR}/health_check.sh" all
 }
@@ -126,13 +142,14 @@ run_phase() {
         spark) phase_spark ;;
         topics) phase_topics ;;
         health) phase_health ;;
-        *) die "unknown phase '$1' (ssh env proxy prereqs nfs repo kafka spark topics health all)" ;;
+        cassandra) phase_cassandra ;;
+        *) die "unknown phase '$1' (ssh env proxy prereqs nfs repo kafka spark topics health cassandra all)" ;;
     esac
 }
 
 validate_layout
 phases=("$@")
-[[ "${#phases[@]}" -gt 0 ]] || die "usage: deploy.sh all | <phase>...   (phases: ssh env proxy prereqs nfs repo kafka spark topics health)"
+[[ "${#phases[@]}" -gt 0 ]] || die "usage: deploy.sh all | <phase>...   (phases: ssh env proxy prereqs nfs repo kafka spark topics health cassandra)"
 if [[ "${phases[0]}" == "all" ]]; then
     phases=(ssh env proxy prereqs nfs repo kafka spark topics health)
 fi

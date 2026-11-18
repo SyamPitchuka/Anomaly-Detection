@@ -361,3 +361,66 @@ def test_experiment_switches_reach_spark(monkeypatch, tmp_path):
     assert not custom.exists() and (tmp_path / "default").exists()
     with pytest.raises(SystemExit):
         M.main(["--state-store", "leveldb"])
+
+
+def test_cassandra_switch(monkeypatch, tmp_path):
+    """--cassandra HOSTS [--cassandra-cl CL] opens the store (schema first) before the query; unset = no store;
+    --cassandra-cl alone, a bad level or --read-only with --cassandra are refused."""
+    from src.streaming import features_job
+
+    (tmp_path / "model.pt").write_bytes(b"")
+    monkeypatch.setattr(M, "AE_DIR", tmp_path)
+
+    class Stop(Exception):
+        pass
+
+    class FakeSpark:
+        sparkContext = type("SC", (), {"setLogLevel": lambda self, level: None})()
+
+    stores = []
+
+    class FakeStore:
+        def __init__(self, hosts, cl):
+            self.hosts, self.consistency, self.schema = M.CS.parse_hosts(hosts), cl, False
+            stores.append(self)
+
+        def ensure_schema(self):
+            self.schema = True
+
+    monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: FakeSpark())
+    monkeypatch.setattr(features_job, "read_telemetry", lambda spark, cap=None, **kw: "telemetry")
+    monkeypatch.setattr(M, "build_scores", lambda t: (_ for _ in ()).throw(Stop))
+    monkeypatch.setattr(M.CS, "CassandraStore", FakeStore)
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka"])
+    assert stores == []
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka", "--cassandra", "spark-w2,spark-w5"])
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka", "--cassandra", "spark-w2", "--cassandra-cl", "all"])
+    assert [(s.hosts, s.consistency, s.schema) for s in stores] == [
+        (["spark-w2", "spark-w5"], "QUORUM", True), (["spark-w2"], "ALL", True)]
+    for bad in (["--cassandra-cl", "ONE"], ["--cassandra", "h", "--cassandra-cl", "TWO"],
+                ["--cassandra", "h", "--read-only"]):
+        with pytest.raises(SystemExit):
+            M.main(bad)
+
+
+def test_cassandra_upsert_sends_only_the_batch_anomalies():
+    sent = []
+
+    class FakeStore:
+        def upsert_anomalies(self, rows):
+            sent.extend(rows)
+            return M.CS.UpsertResult(rows=len(rows), ms=1.5)
+
+    ws = 1_767_225_600_000_000   # 2026-01-01T00:00:00Z in microseconds
+    pdf = pd.DataFrame({"entity_id": ["machine-1-1", "machine-1-1", "machine-1-2"],
+                        "ws_us": [ws, ws + 300_000_000, ws], "ae_score": [4.0, 0.2, 5.0],
+                        "top_metrics": [["m01", "m02", "m03"]] * 3, "is_anomaly": [True, False, True]})
+    res = M.cassandra_upsert(FakeStore(), pdf)
+    assert [(e, t.isoformat()) for e, t, _, _ in sent] == [("machine-1-1", "2026-01-01T00:00:00+00:00"),
+                                                         ("machine-1-2", "2026-01-01T00:00:00+00:00")]
+    assert M.cassandra_log_line(res, "QUORUM") == "cassandra upserts 2/2 anomalies at CL QUORUM in 2 ms"
+    bad = M.CS.UpsertResult(rows=2, failed=1, ms=3.0, errors=["Unavailable: x"])
+    assert "FAILED 1: Unavailable: x" in M.cassandra_log_line(bad, "ALL")
