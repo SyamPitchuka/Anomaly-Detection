@@ -41,6 +41,12 @@ Steps:
 Outputs: models/ae_smd/model.pt, scaler.json, threshold.json, history.json.
 --seed N (default 42) sets the training seed. --out-dir DIR (default: none) writes the model files to DIR and the
 test scores to DIR/scores/source=<source>/scores.parquet instead of models/ae_<source>/ and data/scores_ae/.
+
+Alibaba (E5b): --source alibaba uses the 7 Alibaba metrics. Alibaba has no attrs.split, so --train-from-hours H is
+required there: windows starting at least H hours after 2026-01-01T00:00:00Z are train, earlier windows test (no
+labels, so their evaluation only counts alarms). --raw-dir reads another raw layer folder. score_layer() applies a
+saved model to any raw layer with every window treated as test (recenter, adaptive limit and threshold as saved),
+the way the streaming job scores new windows.
 """
 import argparse
 import json
@@ -69,7 +75,7 @@ from src.detection.evaluate import (  # noqa: E402
     pr_auc,
 )
 
-METRICS = {"smd": S.SMD_METRICS}
+METRICS = {"smd": S.SMD_METRICS, "alibaba": S.ALIBABA_METRICS}
 WINDOW_US = 5 * 60 * 1_000_000
 WINDOW_MINUTES = WINDOW_US // 60_000_000
 SCORES_AE_DIR = "data/scores_ae"
@@ -155,7 +161,21 @@ def load_windows(raw_dir: Path, metrics: list[str], sample: int | None, aggs: tu
         meta, X = build_windows(pq.read_table(path, schema=S.arrow_schema("raw")), metrics, aggs, window_us)
         metas.append(meta)
         xs.append(X)
-    return pd.concat(metas, ignore_index=True), np.vstack(xs)
+    meta, X = pd.concat(metas, ignore_index=True), np.vstack(xs)
+    if meta.duplicated(["entity_id", "window_start"]).any():   # a machine split over several files (Spark parts)
+        raise ValueError(f"a window of one machine appears in more than one file under {raw_dir}")
+    order = np.lexsort((meta["window_start"].to_numpy(), meta["entity_id"].to_numpy()))
+    return meta.iloc[order].reset_index(drop=True), X[order]
+
+
+def split_by_time(meta: pd.DataFrame, train_from_hours: float) -> pd.DataFrame:
+    """split = train for windows starting at least train_from_hours after S.TIME_BASE_UTC, else test (label 0)."""
+    base_us = int(pd.Timestamp(S.TIME_BASE_UTC).value // 1000)
+    is_train = meta["window_start"].to_numpy() >= base_us + int(train_from_hours * 3600 * 1_000_000)
+    out = meta.copy()
+    out["split"] = np.where(is_train, "train", "test")
+    out["label"] = np.where(is_train, np.nan, np.nan_to_num(out["label"].to_numpy(dtype=float), nan=0.0))
+    return out
 
 
 # ---------------------------------------------------------------- scaling
@@ -446,21 +466,62 @@ def _print_report(per_machine: pd.DataFrame, overall: dict) -> None:
               f"f1 {m['f1']:.3f}{note}")
 
 
+# ---------------------------------------------------------------- scoring a raw layer with a saved model
+
+def score_layer(model_dir: Path, raw_dir: Path) -> tuple[pd.DataFrame, np.ndarray, np.ndarray, list]:
+    """Apply a model saved by run() to every window of a raw layer, all treated as test windows in time order:
+    recentred on the machine's previous windows of this layer (scaler.json recenter), adaptive limit over the
+    machine's previous scores of this layer and the saved threshold mode. Machines unknown to the model get
+    NaN scores and no flags. Returns (meta, ae_score, ae_flag, top_metrics)."""
+    model, scaler, info = load_model(model_dir)
+    metrics, inputs = scaler["metrics"], scaler["inputs"]
+    aggs = INPUTS[inputs]
+    feature_metrics = [m for _ in aggs for m in metrics]
+    meta, X = load_windows(Path(raw_dir), metrics, None, aggs)
+    meta = meta.assign(split="test")
+    known = meta["entity_id"].isin(list(scaler["entities"])).to_numpy()
+    n = len(meta)
+    ae_score, ae_flag, top = np.full(n, np.nan), np.zeros(n, dtype=bool), [[] for _ in range(n)]
+    if known.any():
+        mk, Xk = meta[known].reset_index(drop=True), X[known]
+        recenter = (scaler.get("recenter") or {}).get("windows", 0)
+        centers = recenter_centers(mk, Xk, scaler["entities"], recenter) if recenter else None
+        Z, mask = standardise(mk, Xk, scaler["entities"], feature_metrics, centers)
+        s, t = score(model, Z, mask, metrics)
+        adaptive = info.get("adaptive")
+        limit = (adaptive_limits(mk, s, adaptive["windows"], adaptive["percentile"]) if adaptive else None)
+        per_machine = {**{e: info["global"] for e in mk["entity_id"].unique()}, **info["per_machine"]}
+        f = flags(mk, s, {**info, "per_machine": per_machine}, info["mode"], limit)
+        idx = np.flatnonzero(known)
+        ae_score[idx], ae_flag[idx] = s, f
+        for i, tm in zip(idx, t):
+            top[i] = tm
+    return meta, ae_score, ae_flag, top
+
+
 # ---------------------------------------------------------------- driver
 
 def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS,
         threshold_mode: str = "global", std_floor: float = STD_FLOOR,
         root: Path = ROOT, verbose: bool = True, flat_std: float = FLAT_STD,
         inputs: str = DEFAULT_INPUTS, recenter: int = RECENTER, adaptive: int = ADAPTIVE,
-        seed: int = SEED, model_dir: Path | None = None, scores_dir: Path | None = None) -> dict:
+        seed: int = SEED, model_dir: Path | None = None, scores_dir: Path | None = None,
+        train_from_hours: float | None = None, raw_dir: Path | None = None) -> dict:
     """Train, threshold, save and evaluate. model_dir (default models/ae_<source>) gets the model files,
-    scores_dir (default data/scores_ae/source=<source>) gets scores.parquet."""
+    scores_dir (default data/scores_ae/source=<source>) gets scores.parquet. train_from_hours replaces
+    attrs.split by a time split (required for Alibaba); raw_dir replaces data/raw/source=<source>."""
     metrics = METRICS[source]
     aggs = INPUTS[inputs]
     features = feature_names(metrics, aggs)
     feature_metrics = [m for _ in aggs for m in metrics]
-    meta, X = load_windows(root / S.PATHS["raw"] / f"source={source}", metrics, sample, aggs)
+    raw_dir = root / S.PATHS["raw"] / f"source={source}" if raw_dir is None else Path(raw_dir)
+    meta, X = load_windows(raw_dir, metrics, sample, aggs)
+    if train_from_hours is not None:
+        meta = split_by_time(meta, train_from_hours)
     is_train = (meta["split"] == "train").to_numpy()
+    if is_train.all() or not is_train.any():
+        raise ValueError(f"need both train and test windows ({is_train.sum()} train of {len(is_train)}); "
+                         f"source {source} without attrs.split needs --train-from-hours")
     print(f"{meta['entity_id'].nunique()} machines, {is_train.sum()} train + {(~is_train).sum()} test windows")
 
     scalers = fit_scalers(meta, X, std_floor)
@@ -481,7 +542,8 @@ def run(source: str = "smd", sample: int | None = None, epochs: int = MAX_EPOCHS
     model_dir.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "n_in": len(features), "hidden": list(HIDDEN),
                 "metrics": metrics, "inputs": inputs, "features": features,
-                "window_minutes": WINDOW_MINUTES}, model_dir / "model.pt")
+                "window_minutes": WINDOW_MINUTES, "seed": seed, "train_from_hours": train_from_hours},
+               model_dir / "model.pt")
     recenter_info = ({"windows": recenter, "min_periods": max(1, recenter // 2), "statistic": "median",
                       "applies_to": "test", "fallback": "train mean"} if recenter else None)
     (model_dir / "scaler.json").write_text(
@@ -539,11 +601,19 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=None,
                         help="write model files here and scores to <dir>/scores/ (default: models/ae_<source>/ "
                              "and data/scores_ae/)")
+    parser.add_argument("--train-from-hours", type=float, default=None,
+                        help="time split instead of attrs.split: windows from H hours after the time base on are "
+                             "train, earlier ones test (required for --source alibaba)")
+    parser.add_argument("--raw-dir", type=Path, default=None,
+                        help="raw layer folder to read (default data/raw/source=<source>)")
     args = parser.parse_args()
+    if args.source == "alibaba" and args.train_from_hours is None:
+        parser.error("--source alibaba needs --train-from-hours (Alibaba has no train/test split)")
     run(args.source, args.sample, args.epochs, args.threshold, args.std_floor, args.root,
         flat_std=args.flat_std, inputs=args.inputs, recenter=args.recenter, adaptive=args.adaptive,
         seed=args.seed, model_dir=args.out_dir,
-        scores_dir=None if args.out_dir is None else args.out_dir / "scores" / f"source={args.source}")
+        scores_dir=None if args.out_dir is None else args.out_dir / "scores" / f"source={args.source}",
+        train_from_hours=args.train_from_hours, raw_dir=args.raw_dir)
     return 0
 
 

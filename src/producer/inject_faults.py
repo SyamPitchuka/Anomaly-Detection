@@ -12,6 +12,13 @@ Run from the repo root:
      spike  one random metric x 3 for 5 minutes
      drift  one random metric +2 % per minute for 30 minutes (x (1 + 0.02 * minutes since the start))
      break  net_in x 0.1 for 15 minutes while cpu is untouched, placed where cpu is high (top quarter of 5-minute means)
+     corrbreak (only with --types ... corrbreak, E5b) for 15 minutes one metric that is correlated with another one
+            (|Pearson r| of the clean 5-minute means >= 0.5, else the most correlated metric) is replaced by the same
+            metric of a random 15-minute stretch of the machine's own clean part, whose mean lies between the 10th and
+            90th percentile of the clean window means and on the other side of the clean median than the replaced
+            stretch. Every value stays inside the machine's clean min-max; only the joint pattern breaks.
+   Faults are planned in the order break, spike, drift, corrbreak, so adding corrbreak leaves the E5 faults of a seed
+   unchanged (corrbreak takes machines that E5 left fault-free).
 3. Output under --out-root (default data/inject): data/raw/source=alibaba/<machine>.parquet (a raw layer that
    src/producer/replay.py reads with --root <out-root>) and injection_log.json (type, machine, metric, start/end, rows).
 4. Replay: the injected raw layer goes through src/producer/replay.py (--speedup 0, event_time order) into a capture
@@ -50,11 +57,15 @@ SOURCE = "alibaba"
 METRICS = S.ALIBABA_METRICS
 BASE_S = int(datetime.fromisoformat(S.TIME_BASE_UTC.replace("Z", "+00:00")).timestamp())
 WINDOW_S = 300                                  # 5-minute windows, as everywhere in the pipeline
-FAULT_TYPES = ("spike", "drift", "break")
+FAULT_TYPES = ("spike", "drift", "break")         # E5 default
+ALL_TYPES = (*FAULT_TYPES, "corrbreak")         # E5b
+PLAN_ORDER = ("break", "spike", "drift", "corrbreak")
 SPIKE_FACTOR, SPIKE_MINUTES = 3.0, 5
 DRIFT_RATE, DRIFT_MINUTES = 0.02, 30
 BREAK_FACTOR, BREAK_MINUTES, BREAK_CPU_QUANTILE = 0.1, 15, 0.75
-DURATION_S = {"spike": SPIKE_MINUTES * 60, "drift": DRIFT_MINUTES * 60, "break": BREAK_MINUTES * 60}
+CORR_MINUTES, CORR_MIN_R, CORR_BAND = 15, 0.5, (0.10, 0.90)
+DURATION_S = {"spike": SPIKE_MINUTES * 60, "drift": DRIFT_MINUTES * 60, "break": BREAK_MINUTES * 60,
+              "corrbreak": CORR_MINUTES * 60}
 MIN_COVERAGE = 0.9                              # a metric is injectable if present in this share of a machine's rows
 MIN_ROW_SHARE = 0.8                             # a fault interval needs this share of the rows a gap-free machine would have
 MIN_BASELINE_WINDOWS = 12                       # a machine needs this many 5-minute windows (1 h) before the first fault
@@ -130,18 +141,106 @@ def _high_cpu_starts(df: pd.DataFrame, starts: list[int]) -> list[int]:
     return good or [max(starts, key=lambda s: lowest[s])]
 
 
-def plan_faults(series: dict[str, pd.DataFrame], clean_end: int, per_type: int, rng: random.Random) -> list[dict]:
+def correlated_pairs(df: pd.DataFrame, clean_end: int, metrics: list[str]) -> dict[str, tuple[str, float]]:
+    """metric -> (its most correlated other metric, Pearson r) over the clean 5-minute window means."""
+    clean = df[df["ts"] < clean_end]
+    means = clean.groupby(clean["ts"] // WINDOW_S)[metrics].mean()
+    r = means.corr().fillna(0.0)
+    out = {}
+    for m in metrics:
+        others = r.loc[m].drop(m)
+        if len(others):
+            partner = others.abs().idxmax()
+            out[m] = (str(partner), float(r.loc[m, partner]))
+    return out
+
+
+def corrbreak_targets(df: pd.DataFrame, clean_end: int, usable: list[str]) -> dict[str, tuple[str, float]]:
+    """Candidate target metrics with |r| >= CORR_MIN_R to a partner; else the single most correlated one."""
+    pairs = correlated_pairs(df, clean_end, usable)
+    good = {m: p for m, p in pairs.items() if abs(p[1]) >= CORR_MIN_R}
+    if good or not pairs:
+        return good
+    best = max(pairs, key=lambda m: abs(pairs[m][1]))
+    return {best: pairs[best]}
+
+
+def donor_stretches(df: pd.DataFrame, clean_end: int, metric: str, duration_s: int) -> tuple[list[int], pd.Series]:
+    """Clean 5-minute-aligned stretches with enough rows whose metric mean is inside CORR_BAND of the clean window
+    means; returns (those starts, metric mean of every complete clean stretch by start)."""
+    ts = df["ts"].to_numpy()
+    step = float(np.median(np.diff(ts))) or 1.0
+    clean = df[df["ts"] < clean_end]
+    window_means = clean.groupby(clean["ts"] // WINDOW_S * WINDOW_S)[metric].mean()
+    lo, hi = window_means.quantile(CORR_BAND[0]), window_means.quantile(CORR_BAND[1])
+    first = int(math.ceil(int(clean["ts"].min()) / WINDOW_S) * WINDOW_S)
+    cts, values = clean["ts"].to_numpy(), clean[metric].to_numpy()
+    means = {}
+    for s in range(first, clean_end - duration_s + 1, WINDOW_S):
+        a, b = np.searchsorted(cts, s), np.searchsorted(cts, s + duration_s)
+        rows = values[a:b]
+        rows = rows[~np.isnan(rows)]
+        if len(rows) >= MIN_ROW_SHARE * duration_s / step:
+            means[s] = float(rows.mean())
+    means = pd.Series(means, dtype=float)
+    return [int(s) for s, v in means.items() if lo <= v <= hi], means
+
+
+def plan_corrbreak(df: pd.DataFrame, clean_end: int, usable: list[str], starts: list[int],
+                   rng: random.Random) -> dict | None:
+    """Target metric, partner, start and donor stretch of one corrbreak fault, or None if the machine has none."""
+    targets = corrbreak_targets(df, clean_end, usable)
+    if not targets or not starts:
+        return None
+    metric = rng.choice(sorted(targets))
+    partner, r = targets[metric]
+    start = rng.choice(starts)
+    duration = DURATION_S["corrbreak"]
+    donors, means = donor_stretches(df, clean_end, metric, duration)
+    clean = df.loc[df["ts"] < clean_end, metric]
+    median = float(clean.median())
+    actual = float(df.loc[(df["ts"] >= start) & (df["ts"] < start + duration), metric].mean())
+    other_side = [s for s in donors if (means[s] - median) * (actual - median) < 0]
+    pool = other_side or donors
+    if not pool:
+        return None
+    return {"metric": metric, "start_s": start, "partner": partner, "r": r, "donor_s": rng.choice(pool),
+            "clean_min": float(clean.min()), "clean_max": float(clean.max())}
+
+
+def plan_faults(series: dict[str, pd.DataFrame], clean_end: int, per_type: int, rng: random.Random,
+                types: tuple[str, ...] = FAULT_TYPES) -> list[dict]:
     """One fault per machine: per_type machines for each type, random metric and start (5-minute aligned)."""
+    unknown = set(types) - set(ALL_TYPES)
+    if unknown:
+        raise ValueError(f"unknown fault types {sorted(unknown)}; choose from {ALL_TYPES}")
     usable = {e: usable_metrics(df) for e, df in series.items()}
-    room = {e: {t: _starts(df, clean_end, DURATION_S[t]) for t in FAULT_TYPES} for e, df in series.items()}
+    room = {e: {t: _starts(df, clean_end, DURATION_S[t]) for t in types} for e, df in series.items()}
     free = sorted(series)
     plan = []
-    for kind in ("break", "spike", "drift"):                    # break first: it is the most demanding
+    for kind in (t for t in PLAN_ORDER if t in types):          # break first: it is the most demanding
         ok = [e for e in free if room[e][kind] and usable[e]
-              and (kind != "break" or ("cpu" in usable[e] and "net_in" in usable[e]))]
+              and (kind != "break" or ("cpu" in usable[e] and "net_in" in usable[e]))
+              and (kind != "corrbreak" or len(usable[e]) >= 2)]
         if len(ok) < per_type:
             raise ValueError(f"need {per_type} machines for '{kind}' faults, only {len(ok)} are left; use more "
                              f"--machines, more --hours or a smaller --clean-hours / --per-type")
+        if kind == "corrbreak":
+            chosen = []
+            for entity in rng.sample(ok, len(ok)):               # random order; skip machines without a donor
+                if len(chosen) == per_type:
+                    break
+                spec = plan_corrbreak(series[entity], clean_end, usable[entity], room[entity][kind], rng)
+                if spec:
+                    chosen.append((entity, spec))
+            if len(chosen) < per_type:
+                raise ValueError(f"need {per_type} machines for 'corrbreak' faults, only {len(chosen)} have a "
+                                 f"correlated metric and a clean donor stretch")
+            for entity, spec in sorted(chosen, key=lambda c: c[0]):
+                free.remove(entity)
+                plan.append({"fault_id": f"{kind}-{entity}", "type": kind, "entity_id": entity,
+                             "end_s": spec["start_s"] + DURATION_S[kind], **spec})
+            continue
         for entity in sorted(rng.sample(ok, per_type)):
             free.remove(entity)
             starts = _high_cpu_starts(series[entity], room[entity][kind]) if kind == "break" else room[entity][kind]
@@ -161,6 +260,13 @@ def apply_fault(df: pd.DataFrame, fault: dict) -> int:
     elif fault["type"] == "drift":
         minutes = (df.loc[inside, "ts"] - fault["start_s"]) / 60.0
         df.loc[inside, metric] *= 1.0 + DRIFT_RATE * minutes
+    elif fault["type"] == "corrbreak":
+        # the donor stretch's values in time order, matched by position (repeated if it has fewer rows);
+        # rows where the metric is missing stay missing
+        donor = df.loc[(df["ts"] >= fault["donor_s"]) & (df["ts"] < fault["donor_s"] + DURATION_S["corrbreak"]),
+                       metric].dropna().to_numpy()
+        target = inside & df[metric].notna()
+        df.loc[target, metric] = np.resize(donor, int(target.sum()))
     else:
         df.loc[inside, metric] *= BREAK_FACTOR
     df.loc[inside, "label"] = 1
@@ -168,8 +274,12 @@ def apply_fault(df: pd.DataFrame, fault: dict) -> int:
 
 
 def describe(fault: dict, n_rows: int) -> dict:
-    params = {"spike": {"factor": SPIKE_FACTOR}, "drift": {"rate_per_minute": DRIFT_RATE},
-              "break": {"factor": BREAK_FACTOR, "cpu": "unchanged, high"}}[fault["type"]]
+    if fault["type"] == "corrbreak":
+        params = {"partner": fault["partner"], "r": round(fault["r"], 4), "donor_start": iso(fault["donor_s"]),
+                  "clean_min": fault["clean_min"], "clean_max": fault["clean_max"]}
+    else:
+        params = {"spike": {"factor": SPIKE_FACTOR}, "drift": {"rate_per_minute": DRIFT_RATE},
+                  "break": {"factor": BREAK_FACTOR, "cpu": "unchanged, high"}}[fault["type"]]
     return {"fault_id": fault["fault_id"], "type": fault["type"], "entity_id": fault["entity_id"],
             "metric": fault["metric"], "start_time": iso(fault["start_s"]), "end_time": iso(fault["end_s"]),
             "n_rows": n_rows, "params": params}
@@ -193,12 +303,13 @@ def write_raw(out_root: Path, series: dict[str, pd.DataFrame]) -> None:
 
 
 def inject(root: Path = ROOT, out_root: Path | None = None, machines: int = 12, start_hours: float = 0,
-           hours: float = 24, clean_hours: float = 8, per_type: int = 3, seed: int = 7) -> dict:
+           hours: float = 24, clean_hours: float = 8, per_type: int = 3, seed: int = 7,
+           types: tuple[str, ...] = FAULT_TYPES) -> dict:
     """Slice, inject, write the raw layer and the log under out_root; returns the log."""
     out_root = Path(out_root or Path(root) / DEFAULT_OUT)
     series = read_slice(root, machines, start_hours, hours)
     clean_end = int(BASE_S + (start_hours + clean_hours) * 3600)
-    plan = plan_faults(series, clean_end, per_type, random.Random(seed))
+    plan = plan_faults(series, clean_end, per_type, random.Random(seed), tuple(types))
     faults = [describe(f, apply_fault(series[f["entity_id"]], f)) for f in plan]
     write_raw(out_root, series)
     log = {"source": SOURCE, "seed": seed, "machines": sorted(series), "slice_start": iso(BASE_S + start_hours * 3600),
@@ -294,7 +405,7 @@ def report(log: dict, windows: pd.DataFrame, flags: pd.DataFrame) -> pd.DataFram
     """Per fault type: events, detected, recall, mean/median detection delay (minutes), false alarms per day."""
     clean_end = int(datetime.fromisoformat(log["clean_end"].replace("Z", "+00:00")).timestamp())
     rows = []
-    groups = [(t, [f for f in log["faults"] if f["type"] == t]) for t in FAULT_TYPES] + [("all", log["faults"])]
+    groups = [(t, [f for f in log["faults"] if f["type"] == t]) for t in ALL_TYPES] + [("all", log["faults"])]
     for name, faults in groups:
         if not faults:
             continue
@@ -329,12 +440,15 @@ def main() -> int:
     ap.add_argument("--clean-hours", type=float, default=8, help="fault-free start of the slice (detector baseline)")
     ap.add_argument("--per-type", type=int, default=3, help="faults (= machines) per fault type")
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--types", nargs="+", choices=ALL_TYPES, default=list(FAULT_TYPES),
+                    help="fault types to inject (default the E5 three; E5b adds corrbreak)")
     ap.add_argument("--threshold", type=float, default=THRESHOLD, help="z-score threshold of the built-in detector")
     ap.add_argument("--scores", type=Path, default=None, help="use the flags of this scores layer instead of the built-in detector")
     ap.add_argument("--flag-col", default="is_anomaly", help="flag column of --scores")
     a = ap.parse_args()
     log, table = run(a.root, a.out_root, a.threshold, a.scores, a.flag_col, machines=a.machines,
-                     start_hours=a.start_hours, hours=a.hours, clean_hours=a.clean_hours, per_type=a.per_type, seed=a.seed)
+                     start_hours=a.start_hours, hours=a.hours, clean_hours=a.clean_hours, per_type=a.per_type, seed=a.seed,
+                     types=tuple(a.types))
     print(f"log: {(a.out_root or a.root / DEFAULT_OUT) / LOG_NAME}")
     print(table.to_string(float_format=lambda x: f"{x:.2f}"))
     return 0
