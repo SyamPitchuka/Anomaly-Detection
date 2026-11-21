@@ -59,9 +59,21 @@ def test_edges_with_and_without_gap():
 
 
 def test_smd_group_and_vertices():
-    assert [E.smd_group(m) for m in ("machine-1-1", "machine-3-11", "other")] == ["1", "3", "?"]
+    assert [E.smd_group(m) for m in ("machine-1-1", "machine-3-11", "m_12", "a-b-c")] == ["1", "3", "-", "-"]
     v = E.vertices(inc_df()["entity_id"])
-    assert list(v["id"]) == sorted(set(inc_df()["entity_id"])) and list(v["smd_group"]) == ["1", "1", "2", "3", "3"]
+    assert list(v["id"]) == sorted(set(inc_df()["entity_id"])) and list(v["group"]) == ["1", "1", "2", "3", "3"]
+
+
+def test_output_names_per_source(tmp_path):
+    assert E.out_file(tmp_path, "pregel", "smd", "json").name == "pregel.json"
+    assert E.out_file(tmp_path, "neo4j", "alibaba", "json").name == "neo4j_alibaba.json"
+    assert E.edges_file(tmp_path, "alibaba", "sig").name == "edges_alibaba_sig.csv"
+    assert E.edges_file(tmp_path, "smd", "gap0").name == "edges_gap0.csv"
+    for src in E.SOURCES:
+        cmd = E.cluster_command(src)
+        assert f"--source {src}" in cmd and "--total-executor-cores 4" in cmd
+        assert f"pregel{E.SOURCES[src]['suffix']}_cluster.json" in cmd
+    assert "e8_alibaba_input.py" in E.cluster_command("alibaba")
 
 
 def test_spans_fall_back_to_incidents_and_widen_from_scores(tmp_path):
@@ -74,6 +86,14 @@ def test_spans_fall_back_to_incidents_and_widen_from_scores(tmp_path):
     sc.to_parquet(tmp_path / "scores.parquet")
     spans = E.load_spans(tmp_path / "scores.parquet", inc)
     assert spans["machine-1-1"] == (M0 - 60, M0 + 905) and spans["machine-3-2"] == (M0 + 500, M0 + 505)
+    # a machine with scores but no incident gets a span, hence a vertex
+    sc2 = pd.concat([sc, sc.assign(entity_id="machine-9-9")])
+    sc2.to_parquet(tmp_path / "scores2.parquet")
+    spans = E.load_spans(tmp_path / "scores2.parquet", inc)
+    assert spans["machine-9-9"] == (M0 - 60, M0 + 905)
+    vert, graphs, null = E.build_graphs(inc, spans, n_shuffles=5, seed=1)
+    assert "machine-9-9" in set(vert["id"]) and null["n_pairs"] == 15
+    assert "machine-9-9" not in set(graphs["gap10"]["src"]) | set(graphs["gap10"]["dst"])
 
 
 def test_shuffle_keeps_count_durations_and_span():
@@ -114,6 +134,36 @@ def test_significance_and_chance_count_on_handmade_null():
     assert E.chance_sig_edges(null_w) == pytest.approx(2 / 3)
 
 
+def test_alarm_waves_chain_incidents_across_machines():
+    w = E.alarm_waves(inc_df(), 10)
+    assert w["machines"].tolist() == [3, 3, 1] and w["incidents"].tolist() == [3, 3, 1]
+    assert w["members"].tolist()[0] == ["machine-1-1", "machine-1-2", "machine-3-1"]
+    assert w["members"].tolist()[1] == ["machine-1-1", "machine-1-2", "machine-2-1"]
+    assert (w["start"] - M0).tolist() == [0, 95, 500] and (w["end"] - M0).tolist() == [20, 120, 505]
+    w0 = E.alarm_waves(inc_df(), 0)  # touching (3-1 at 15) and a 5-minute gap (2-1 at 115) split without a gap
+    assert w0["machines"].tolist() == [2, 1, 2, 1, 1]
+    assert E.alarm_waves(inc_df().iloc[:0], 10).empty
+
+
+def test_wave_summary_against_handmade_null():
+    null = np.array([[1, 0, 0, 2], [2, 0, 0, 3], [0, 0, 0, 1]])  # columns: >=3, >=5, >=8 machines, largest
+    w = E.wave_summary(inc_df(), null, M0, top=5)
+    r3 = w["by_size"][0]
+    assert [r["min_machines"] for r in w["by_size"]] == list(E.WAVE_SIZES)
+    assert r3["observed"] == 2 and r3["incidents"] == 6 and r3["p"] == pytest.approx(2 / 4)
+    assert w["by_size"][1]["observed"] == 0 and w["by_size"][1]["p"] == pytest.approx(1.0)
+    assert w["largest"] == 3 and w["p_largest"] == pytest.approx(2 / 4) and w["chance_largest_max"] == 3
+    assert [t["start_h"] for t in w["top"]] == [0.0, 95 / 60] and w["top"][0]["minutes"] == 20
+
+
+def test_null_model_records_waves():
+    inc = inc_df()
+    spans = {m: (M0, M0 + 3_000) for m in inc["entity_id"]}
+    a = E.null_model(inc, spans, (10, 0), n=6, seed=2)
+    assert a["waves"].shape == (6, len(E.WAVE_SIZES) + 1)
+    assert (a["waves"][:, -1] >= 1).all() and (a["waves"][:, 0] >= a["waves"][:, 1]).all()
+
+
 def test_build_graphs_shapes():
     inc = inc_df()
     spans = {m: (M0, M0 + 2_000) for m in inc["entity_id"]}
@@ -150,43 +200,95 @@ def test_pagerank_reference_matches_networkx_scaled():
         assert ours[m] == pytest.approx(3 * ref[m], rel=1e-6)
 
 
-def fake_results(machines, comp_shift=0):
+def fake_results(machines):
     lab = {m: E.smd_group(m) for m in machines}
     pr = {m: 1.0 + k / 10 for k, m in enumerate(machines)}
     return {"components": {m: 0 for m in machines}, "lpa": lab, "pagerank": pr}, \
-        {"wcc": {m: 5 + comp_shift for m in machines}, "louvain": lab, "lpa": lab, "pagerank": dict(pr),
+        {"wcc": {m: 5 for m in machines}, "louvain": lab, "lpa": lab, "pagerank": dict(pr),
          "louvain_modularity": 0.1}
 
 
-def test_report_end_to_end(tmp_path):
-    pytest.importorskip("networkx")  # the plot (requirements-graph.txt)
-    inc = inc_df()
-    spans = {m: (M0, M0 + 2_000) for m in inc["entity_id"]}
+def write_fake_source(tmp_path, source, inc):
+    spans = {m: (int(inc["start"].min()), int(inc["start"].min()) + 2_000) for m in inc["entity_id"]}
     vert, graphs, null = E.build_graphs(inc, spans, n_shuffles=10, seed=1)
-    E.write_graph_files(tmp_path, vert, graphs)
+    E.write_graph_files(tmp_path, vert, graphs, source)
     p_res, n_res = {}, {}
     for g in E.GRAPHS:
         p_res[g], n_res[g] = fake_results(list(vert["id"]))
-    pregel = {"incidents": "x", "n_incidents": len(inc), "n_machines": 5, "null": null, "results": p_res,
+    pregel = {"source": source, "incidents": "x", "scores": "y", "n_incidents": len(inc), "n_machines": len(vert),
+              "machines_with_incidents": int(inc["entity_id"].nunique()),
+              "span_minutes": {"min": 2_000, "max": 2_000}, "incident_minutes": {"median": 5.0, "mean": 6.0},
+              "null": null, "results": p_res,
               "env": {"master": "local[*]", "default_parallelism": 2, "spark": "3.5.1", "graphframes": "gf"},
               "spark_edges_equal_pandas": {"gap10": True, "gap0": True},
               "timings": {"total_s": 1.0, "graphs_and_null_s": 0.1, "spark_start_s": 0.2,
                           **{f"{g}_s": 0.3 for g in E.GRAPHS}}}
+    first = sorted(vert["id"])[0]
     neo = {"env": {"neo4j": "5.26.0 community", "gds": "2.13.2"}, "results": n_res,
-           "queries": [{"title": "Q1", "cypher": "MATCH (n) RETURN n.id AS id", "rows": [{"id": "machine-1-1",
-                                                                                     "w": 0.5, "l": ["a", "b"]}]},
+           "queries": [{"title": "Q1", "cypher": "MATCH (n) RETURN n.id AS id",
+                        "rows": [{"id": first, "w": 0.5, "l": ["a", "b"]}]},
                        {"title": "Q2", "cypher": "RETURN 1", "rows": []}],
            "timings": {"total_s": 2.0, "load_s": 0.5, "algorithms_s": 1.0, "queries_s": 0.1}}
-    (tmp_path / "pregel.json").write_text(json.dumps(pregel))
-    (tmp_path / "neo4j.json").write_text(json.dumps(neo))
+    E.out_file(tmp_path, "pregel", source, "json").write_text(json.dumps(pregel))
+    E.out_file(tmp_path, "neo4j", source, "json").write_text(json.dumps(neo))
+
+
+def alibaba_inc():
+    return inc_df().assign(entity_id=lambda d: d["entity_id"].map(
+        {"machine-1-1": "m_1", "machine-1-2": "m_2", "machine-2-1": "m_3", "machine-3-1": "m_4",
+         "machine-3-2": "m_5"}))
+
+
+def test_report_end_to_end_both_sources(tmp_path):
+    pytest.importorskip("networkx")  # the plot (requirements-graph.txt)
+    write_fake_source(tmp_path, "smd", inc_df())
+    write_fake_source(tmp_path, "alibaba", alibaba_inc())
+    ai = tmp_path / "input.json"
+    ai.write_text(json.dumps({"total_s": 9.0, "raw_s": 1.0, "score_s": 5.0, "incidents_s": 3.0,
+                              "scores": {"windows": 100, "flagged": 7}}))
     md, js, png = tmp_path / "r.md", tmp_path / "r.json", tmp_path / "r.png"
-    assert E.main(["report", "--out-dir", str(tmp_path), "--md", str(md), "--json", str(js), "--png", str(png)]) == 0
-    text = md.read_text()
-    assert "Null check" in text and "| gap10 | yes |" in text and "machine-1-1 | 0.500 | a, b" in text
-    assert "spark-submit --master spark://spark-master:7077" in text and "(no rows)" in text
+    assert E.main(["report", "--out-dir", str(tmp_path), "--md", str(md), "--json", str(js), "--png", str(png),
+                   "--alibaba-input", str(ai)]) == 0
+    text = md.read_text(encoding="utf-8")
+    assert text.index("## Part 1 -- SMD") < text.index("## Part 2 -- Alibaba")
+    assert "SMD timestamps are synthetic" in text and "Alibaba has no labels" in text
+    assert "## SMD vs Alibaba" in text and "share of edges beyond chance" in text
+    assert "| gap10 | yes |" in text and "machine-1-1 | 0.500 | a, b" in text and "m_1 | 0.500 | a, b" in text
+    assert text.count("spark-submit --master spark://spark-master:7077") == 2 and "(no rows)" in text
+    assert "Do the groups follow the SMD machine groups" in text
+    assert text.count("Do the groups follow") == 1  # SMD only
+    assert "100 windows, 7 flagged" in text
     doc = json.loads(js.read_text())
-    assert doc["compare"]["gap10"]["components_same"] and doc["compare"]["gap10"]["ari_vs_smd_group"]["louvain"] == 1
-    assert png.stat().st_size > 10_000
+    assert doc["sources"] == ["smd", "alibaba"]
+    assert doc["smd"]["compare"]["gap10"]["ari_vs_smd_group"]["louvain"] == 1
+    assert "ari_vs_smd_group" not in doc["alibaba"]["compare"]["gap10"]
+    assert doc["comparison"]["alibaba"]["machines"] == 5 and doc["comparison"]["smd"]["components_same_all"]
+    assert png.stat().st_size > 10_000 and (tmp_path / "r_alibaba.png").stat().st_size > 10_000
+
+
+def test_plot_alibaba_with_incident_timeline(tmp_path):
+    pytest.importorskip("networkx")
+    inc = alibaba_inc()
+    spans = {m: (M0, M0 + 2_000) for m in inc["entity_id"]}
+    vert, graphs, null = E.build_graphs(inc, spans, n_shuffles=5, seed=1)
+    waves = {**null["waves"], "top": [{"start_h": 0.0, "minutes": 20, "machines": 8, "incidents": 3,
+                                       "members": ["m_1", "m_2", "m_4"]}]}
+    neo = {"results": {g: {"pagerank": {m: 1.0 for m in vert["id"]}} for g in E.GRAPHS}}
+    out = tmp_path / "t.png"
+    E.plot(out, vert, graphs["gap10"], neo, "alibaba", inc, waves)
+    assert out.stat().st_size > 10_000
+
+
+def test_report_with_one_source_and_none(tmp_path):
+    pytest.importorskip("networkx")
+    md, js, png = tmp_path / "r.md", tmp_path / "r.json", tmp_path / "r.png"
+    args = ["report", "--out-dir", str(tmp_path), "--md", str(md), "--json", str(js), "--png", str(png),
+            "--alibaba-input", str(tmp_path / "missing.json")]
+    assert E.main(args) == 2
+    write_fake_source(tmp_path, "alibaba", alibaba_inc())
+    assert E.main(args) == 0
+    text = md.read_text(encoding="utf-8")
+    assert "## Part 2 -- Alibaba" in text and "## Part 1 -- SMD" not in text
 
 
 # ---- Spark / GraphFrames (needs the package from the spark-packages repo or the local Ivy cache) -----------------
