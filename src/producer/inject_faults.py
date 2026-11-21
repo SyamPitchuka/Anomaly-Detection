@@ -30,6 +30,21 @@ Run from the repo root:
 6. Report per fault type with src/detection/evaluate.py: events, detected, recall (share of faults with at least one
    flagged window), detection delay in minutes (fault start to the first flagged window, detected faults only), and
    false alarms per day on the same machines.
+
+Cascade mode (--mode cascade, E8c): cascading faults instead of independent ones; injects and writes the raw layer,
+the ground truth (cascade_truth.json) and injection_log.json, nothing else (detection is the stream's job, see
+experiments/e8_cascade.py):
+    python src/producer/inject_faults.py --mode cascade --machines 40 --hours 48 --seed 7 --cascade-window 24 48
+        --cascade-avoid 23.5:55 62.0:50 --out-root data/e8/cascade_root/seed_7/inject
+  Per cascade (--cascades, default 6): one random root machine and --cascade-dependents (4) random dependents; the root
+  fault starts at T (5-minute aligned), each dependent at T + a random 2-8 minutes (whole minutes), each fault lasts
+  15 minutes. Type --cascade-type break (default; net_in x 0.1, cpu untouched, no placement on high cpu) or spike
+  (one random usable metric x 3 for the same 15 minutes). Cascade starts lie in --cascade-window (hours after the time
+  base), whole cascades (T to T + 8 + 15 minutes) inside it, starts at least CASCADE_GAP_H (2 h) apart, every cascade
+  at least CASCADE_MARGIN_H (1 h) away from each --cascade-avoid interval (start hour:minutes), and the cascades use
+  disjoint machines. Machines qualify if the fault metric is usable (break: net_in) and the fault interval has
+  MIN_ROW_SHARE of the expected rows; a start qualifies only if at least dependents + 1 machines have that share of
+  rows over the whole cascade span (the trace has gaps in which all machines are silent). Everything is drawn from random.Random(seed).
 """
 import argparse
 import json
@@ -320,6 +335,140 @@ def inject(root: Path = ROOT, out_root: Path | None = None, machines: int = 12, 
     return log
 
 
+# ---------------------------------------------------------------- cascades (E8c)
+
+CASCADE_TYPES = ("break", "spike")
+CASCADE_COUNT, CASCADE_DEPENDENTS, CASCADE_MINUTES = 6, 4, 15
+CASCADE_DELAY_MIN = (2, 8)                       # dependent onset after the root, whole minutes, both ends included
+CASCADE_GAP_H, CASCADE_MARGIN_H = 2.0, 1.0
+CASCADE_LOG = "cascade_truth.json"
+MAX_DRAWS = 20_000
+
+
+def _has_rows(df: pd.DataFrame, start_s: int, end_s: int) -> bool:
+    ts = df["ts"].to_numpy()
+    step = float(np.median(np.diff(ts))) if len(ts) > 1 else 1.0
+    n = int(np.searchsorted(ts, end_s) - np.searchsorted(ts, start_s))
+    return n >= MIN_ROW_SHARE * (end_s - start_s) / (step or 1.0)
+
+
+def cascade_start_candidates(window_h: tuple[float, float], avoid: list[tuple[float, float]],
+                             margin_h: float = CASCADE_MARGIN_H, minutes: int = CASCADE_MINUTES,
+                             max_delay: int = CASCADE_DELAY_MIN[1]) -> list[int]:
+    """5-minute-aligned cascade starts (epoch s) whose whole cascade [T, T + max_delay + minutes) lies in window_h and
+    at least margin_h from every avoid interval (start hour, length in minutes)."""
+    span = (max_delay + minutes) * 60
+    lo, hi = BASE_S + window_h[0] * 3600, BASE_S + window_h[1] * 3600
+    first = math.ceil(lo / WINDOW_S) * WINDOW_S
+    out = []
+    for t in range(int(first), int(hi - span) + 1, WINDOW_S):
+        if all(t + span <= BASE_S + a0 * 3600 - margin_h * 3600 or
+               t >= BASE_S + a0 * 3600 + am * 60 + margin_h * 3600 for a0, am in avoid):
+            out.append(t)
+    return out
+
+
+def plan_cascades(series: dict[str, pd.DataFrame], rng: random.Random, n: int = CASCADE_COUNT,
+                  window_h: tuple[float, float] = (24, 48), avoid: list[tuple[float, float]] = (),
+                  kind: str = "break", dependents: int = CASCADE_DEPENDENTS, gap_h: float = CASCADE_GAP_H,
+                  margin_h: float = CASCADE_MARGIN_H, delay: tuple[int, int] = CASCADE_DELAY_MIN,
+                  minutes: int = CASCADE_MINUTES) -> list[dict]:
+    """The cascades (see the module docstring), in time order: cascade_id, type, start_s, root, members, faults."""
+    if kind not in CASCADE_TYPES:
+        raise ValueError(f"unknown cascade type {kind!r}; choose from {CASCADE_TYPES}")
+    cands = cascade_start_candidates(window_h, list(avoid), margin_h, minutes, delay[1])
+    span = (delay[1] + minutes) * 60     # skip starts inside gaps of the trace: enough machines must have data
+    cands = [t for t in cands if sum(_has_rows(df, t, t + span) for df in series.values()) >= dependents + 1]
+    if len(cands) < n:
+        raise ValueError(f"only {len(cands)} cascade starts fit the window; need {n}")
+    for _ in range(MAX_DRAWS):
+        starts = sorted(rng.sample(cands, n))
+        if all(b - a >= gap_h * 3600 for a, b in zip(starts, starts[1:])):
+            break
+    else:
+        raise ValueError(f"no {n} cascade starts {gap_h} h apart found in {MAX_DRAWS} draws; widen --cascade-window")
+    usable = {e: usable_metrics(df) for e, df in series.items()}
+    free = sorted(e for e in series if (("net_in" in usable[e]) if kind == "break" else usable[e]))
+    duration = minutes * 60
+    plan = []
+    for c, t in enumerate(starts, 1):
+        offsets = [0] + [rng.randint(*delay) for _ in range(dependents)]
+        chosen = []
+        for e in rng.sample(free, len(free)):
+            s0 = t + offsets[len(chosen)] * 60
+            if _has_rows(series[e], s0, s0 + duration):
+                chosen.append(e)
+                if len(chosen) == dependents + 1:
+                    break
+        if len(chosen) < dependents + 1:
+            raise ValueError(f"cascade {c}: only {len(chosen)} free machines have data at its times; need "
+                             f"{dependents + 1} (cascades use disjoint machines)")
+        for e in chosen:
+            free.remove(e)
+        faults = []
+        for k, (e, off) in enumerate(zip(chosen, offsets)):
+            metric = "net_in" if kind == "break" else rng.choice(usable[e])
+            s0 = t + off * 60
+            faults.append({"fault_id": f"c{c}-{'root' if k == 0 else f'dep{k}'}-{e}", "type": kind, "entity_id": e,
+                           "metric": metric, "role": "root" if k == 0 else "dependent", "offset_min": off,
+                           "start_s": s0, "end_s": s0 + duration})
+        plan.append({"cascade_id": f"c{c}", "type": kind, "start_s": t, "root": chosen[0],
+                     "members": list(chosen), "faults": faults})
+    return plan
+
+
+def inject_cascades(root: Path = ROOT, out_root: Path | None = None, machines: int = 40, start_hours: float = 0,
+                    hours: float = 48, seed: int = 7, n: int = CASCADE_COUNT, window_h: tuple[float, float] = (24, 48),
+                    avoid: list[tuple[float, float]] = (), kind: str = "break",
+                    dependents: int = CASCADE_DEPENDENTS) -> dict:
+    """Slice, inject the cascades, write the raw layer, cascade_truth.json and injection_log.json; returns the truth."""
+    out_root = Path(out_root or Path(root) / DEFAULT_OUT)
+    series = read_slice(root, machines, start_hours, hours)
+    plan = plan_cascades(series, random.Random(seed), n, tuple(window_h), list(avoid), kind, dependents)
+    log_faults, cascades = [], []
+    for c in plan:
+        faults = []
+        for f in c["faults"]:
+            n_rows = apply_fault(series[f["entity_id"]], f)
+            params = {"factor": BREAK_FACTOR if kind == "break" else SPIKE_FACTOR}
+            faults.append({"fault_id": f["fault_id"], "entity_id": f["entity_id"], "role": f["role"],
+                           "offset_min": f["offset_min"], "metric": f["metric"], "start_time": iso(f["start_s"]),
+                           "end_time": iso(f["end_s"]), "n_rows": n_rows})
+            log_faults.append({"fault_id": f["fault_id"], "type": kind, "entity_id": f["entity_id"],
+                               "metric": f["metric"], "start_time": iso(f["start_s"]), "end_time": iso(f["end_s"]),
+                               "n_rows": n_rows, "params": params})
+        cascades.append({"cascade_id": c["cascade_id"], "type": kind, "root": c["root"], "members": c["members"],
+                         "start_time": iso(c["start_s"]), "end_time": iso(max(f["end_s"] for f in c["faults"])),
+                         "faults": faults})
+    write_raw(out_root, series)
+    common = {"source": SOURCE, "seed": seed, "machines": sorted(series),
+              "slice_start": iso(BASE_S + start_hours * 3600), "slice_end": iso(BASE_S + (start_hours + hours) * 3600),
+              "rows": int(sum(len(df) for df in series.values()))}
+    truth = {**common, "mode": "cascade", "type": kind,
+             "rules": {"cascades": n, "dependents": dependents, "fault_minutes": CASCADE_MINUTES,
+                       "dependent_delay_min": list(CASCADE_DELAY_MIN), "window_hours": list(window_h),
+                       "min_gap_hours": CASCADE_GAP_H, "avoid": [list(a) for a in avoid],
+                       "avoid_margin_hours": CASCADE_MARGIN_H, "disjoint_machines": True,
+                       "fault": ("net_in x 0.1" if kind == "break" else "one random usable metric x 3")},
+             "cascades": cascades}
+    (out_root / CASCADE_LOG).write_text(json.dumps(truth, indent=2) + "\n")
+    log = {**common, "clean_end": iso(BASE_S + window_h[0] * 3600), "faults": sorted(log_faults,
+                                                                                    key=lambda f: f["start_time"])}
+    (out_root / LOG_NAME).write_text(json.dumps(log, indent=2) + "\n")
+    print(f"injected {len(cascades)} cascades ({len(log_faults)} faults, type {kind}) into {len(series)} machines "
+          f"({common['rows']} rows) -> {out_root}")
+    return truth
+
+
+def avoid_arg(text: str) -> tuple[float, float]:
+    """argparse type for --cascade-avoid: 'start_hour:minutes', e.g. 23.5:55."""
+    try:
+        h, m = text.split(":")
+        return float(h), float(m)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected start_hour:minutes, got {text!r}") from None
+
+
 # ---------------------------------------------------------------- replay and detection
 
 class CaptureProducer:
@@ -445,7 +594,22 @@ def main() -> int:
     ap.add_argument("--threshold", type=float, default=THRESHOLD, help="z-score threshold of the built-in detector")
     ap.add_argument("--scores", type=Path, default=None, help="use the flags of this scores layer instead of the built-in detector")
     ap.add_argument("--flag-col", default="is_anomaly", help="flag column of --scores")
+    ap.add_argument("--mode", choices=("faults", "cascade"), default="faults",
+                    help="faults (default): independent faults, replay, detect, report; cascade: inject cascades only")
+    ap.add_argument("--cascade-type", choices=CASCADE_TYPES, default="break")
+    ap.add_argument("--cascades", type=int, default=CASCADE_COUNT)
+    ap.add_argument("--cascade-dependents", type=int, default=CASCADE_DEPENDENTS)
+    ap.add_argument("--cascade-window", type=float, nargs=2, default=(24.0, 48.0), metavar=("FROM_H", "TO_H"))
+    ap.add_argument("--cascade-avoid", type=avoid_arg, nargs="*", default=[], metavar="HOUR:MINUTES",
+                    help="intervals the cascades keep --cascade-margin away from, e.g. 23.5:55 62.0:50")
     a = ap.parse_args()
+    if a.mode == "cascade":
+        out = a.out_root or a.root / DEFAULT_OUT
+        inject_cascades(a.root, out, machines=a.machines, start_hours=a.start_hours, hours=a.hours, seed=a.seed,
+                        n=a.cascades, window_h=tuple(a.cascade_window), avoid=a.cascade_avoid, kind=a.cascade_type,
+                        dependents=a.cascade_dependents)
+        print(f"truth: {Path(out) / CASCADE_LOG}")
+        return 0
     log, table = run(a.root, a.out_root, a.threshold, a.scores, a.flag_col, machines=a.machines,
                      start_hours=a.start_hours, hours=a.hours, clean_hours=a.clean_hours, per_type=a.per_type, seed=a.seed,
                      types=tuple(a.types))

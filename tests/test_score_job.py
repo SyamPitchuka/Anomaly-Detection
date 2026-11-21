@@ -482,3 +482,92 @@ def test_cassandra_upsert_sends_only_the_batch_anomalies():
     assert M.cassandra_log_line(res, "QUORUM") == "cassandra upserts 2/2 anomalies at CL QUORUM in 2 ms"
     bad = M.CS.UpsertResult(rows=2, failed=1, ms=3.0, errors=["Unavailable: x"])
     assert "FAILED 1: Unavailable: x" in M.cassandra_log_line(bad, "ALL")
+
+
+def _keep_source_globals(monkeypatch):
+    """Let a test call M.configure: every global it changes is restored afterwards, the env var too."""
+    for name in ("SOURCE", "METRICS", "K", "AE_DIR", "TIER1_PATH", "OUTPUT_DIR", "CHECKPOINT_DIR", "LATENCY_DIR"):
+        monkeypatch.setattr(M, name, getattr(M, name))
+    monkeypatch.setenv(M.SOURCE_ENV, M.SOURCE)
+
+
+def test_configure_alibaba(monkeypatch):
+    _keep_source_globals(monkeypatch)
+    import os
+    M.configure("alibaba")
+    assert M.SOURCE == "alibaba" and M.METRICS == S.ALIBABA_METRICS and M.K == len(S.ALIBABA_METRICS)
+    assert M.AE_DIR == M.ROOT / "models" / "ae_alibaba" and M.OUTPUT_DIR.name == "source=alibaba"
+    assert M.CHECKPOINT_DIR.name == "source=alibaba" and os.environ[M.SOURCE_ENV] == "alibaba"
+    assert M.DEFAULT_SPLIT == {"smd": "train", "alibaba": "test"}
+    with pytest.raises(ValueError):
+        M.configure("nope")
+
+
+def test_main_source_alibaba_reads_its_topic_from_given_offsets(monkeypatch, tmp_path):
+    """--source alibaba: telemetry.alibaba, --starting-offsets reach read_telemetry, --out-dir is the sink."""
+    from src.streaming import features_job
+    _keep_source_globals(monkeypatch)
+    real = M.configure
+
+    def configure(source):
+        real(source)
+        monkeypatch.setattr(M, "AE_DIR", tmp_path)   # a fake model folder, so the job does not stop early
+    monkeypatch.setattr(M, "configure", configure)
+    (tmp_path / "model.pt").write_bytes(b"")
+    monkeypatch.setattr(M, "LATENCY_ROOT", tmp_path / "lat")
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    class FakeWriter:
+        def option(self, k, v):
+            raise Stop
+
+    class FakeFrame:
+        writeStream = type("WS", (), {"foreachBatch": lambda self, f: FakeWriter()})()
+
+    class FakeSpark:
+        sparkContext = type("SC", (), {"setLogLevel": lambda self, level: None})()
+        conf = type("Conf", (), {"set": lambda self, k, v: None})()
+
+    monkeypatch.setattr(features_job, "build_spark", lambda *a, **k: FakeSpark())
+    monkeypatch.setattr(features_job, "read_telemetry", lambda spark, cap=None, **kw: seen.update(kw) or "telemetry")
+    monkeypatch.setattr(M, "build_scores", lambda t: FakeFrame())
+    offsets = '{"telemetry.alibaba": {"0": 5}}'
+    with pytest.raises(Stop):
+        M.main(["--input", "kafka", "--source", "alibaba", "--starting-offsets", offsets,
+                "--out-dir", str(tmp_path / "scores"), "--checkpoint-dir", str(tmp_path / "ck")])
+    assert seen["topic"] == S.TOPIC_ALIBABA and seen["starting_offsets"] == offsets
+    assert M.SOURCE == "alibaba" and M.METRICS == S.ALIBABA_METRICS
+
+
+def test_alibaba_windows_are_test_windows_with_the_batch_answer(monkeypatch):
+    """Alibaba rows (no attrs.split -> 'test') through step() give score_layer's recentred AE answer."""
+    _keep_source_globals(monkeypatch)
+    M.configure("alibaba")
+    rng = np.random.default_rng(3)
+    n = 400
+    vals = rng.normal(10, 1, size=(n, len(S.ALIBABA_METRICS)))
+    rows = pd.DataFrame(vals, columns=S.ALIBABA_METRICS)
+    rows.insert(0, "event_us", BASE_US + np.arange(n, dtype=np.int64) * 60_000_000)
+    rows["split"], rows["label"] = M.DEFAULT_SPLIT["alibaba"], np.nan
+    st = M.new_state(2 * len(S.ALIBABA_METRICS))
+    scaler = {"m_1": {"mean": [10.0] * 14, "std": [1.0] * 14}}
+
+    class Model(torch.nn.Module):
+        def forward(self, x):
+            return torch.zeros_like(x)
+    ae = {"model": Model(), "scalers": scaler, "metrics": S.ALIBABA_METRICS, "aggs": ["mean", "max"],
+          "feature_metrics": S.ALIBABA_METRICS * 2, "recenter": 4, "adaptive": 0, "adaptive_percentile": 99.0,
+          "thresholds": {"global": 1e9}, "mode": "global"}
+    out, _ = M.step("m_1", rows, st, {"ae": ae, "tier1": None, "baselines_module": None})
+    assert len(out) and (out["split"] == "test").all() and out["label"].eq(0).all()
+    # recentred like score_layer: window means vs the median of the previous 4 windows, not the train mean
+    means = rows.assign(w=(rows["event_us"] - BASE_US) // AE.WINDOW_US).groupby("w")[S.ALIBABA_METRICS].mean()
+    X = np.hstack([means.to_numpy(), rows.assign(w=(rows["event_us"] - BASE_US) // AE.WINDOW_US)
+                   .groupby("w")[S.ALIBABA_METRICS].max().to_numpy()])[:len(out)]
+    meta = pd.DataFrame({"entity_id": ["m_1"] * len(X), "split": ["test"] * len(X)})
+    Z, mask = AE.standardise(meta, X, scaler, S.ALIBABA_METRICS * 2, AE.recenter_centers(meta, X, scaler, 4))
+    want, _ = AE.score(ae["model"], Z, mask, S.ALIBABA_METRICS)
+    assert np.allclose(out["ae_score"].to_numpy(dtype=float), want)

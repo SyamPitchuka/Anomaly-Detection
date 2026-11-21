@@ -365,3 +365,155 @@ spark-submit --master spark://spark-master:7077 --executor-cores 2 --total-execu
 - The per-pair test needs several co-occurrences per pair: with ~3 incidents per Alibaba machine a pair co-occurs at most a few times, so few pairs can pass it even when the graph as a whole is far above chance. The alarm-wave test (count of waves with >= k machines) is the better test there.
 - Each machine pair is tested at an empirical p of 1/101 with no further multiple-testing correction (378 SMD pairs, 780 Alibaba pairs). 'Expected by luck' estimates how many beyond-chance edges luck alone gives.
 - LPA (GraphFrames and GDS) is unweighted and breaks ties differently in the two systems; Louvain is weighted. Communities are compared by ARI; components and PageRank are deterministic and compared exactly.
+
+## E8c: injected cascades on Alibaba (stream detection, group and root recovery)
+
+> **These are injected cascades**, not observed ones: a root fault and four dependent faults placed on random machines by `src/producer/inject_faults.py --mode cascade`. They test whether the pipeline and the graph method *can* recover a cascade of this shape; they say nothing about how often real Alibaba faults cascade, and real dependents need not start 2-8 minutes after their root.
+
+**Result.** Over 3 seeds x 6 injected cascades, the stream detected 6.0 of 6 per seed (members alarmed 30.0 of 30). The machine graph recovered the group with member recall 1.00 and precision 0.26, and named the true root in 0.3 of 6 per seed (0.3 more in a tie); reverse PageRank put the root on top in 1.0. The time-resolved variant: recall 1.00, precision 0.85, root correct 0.7 of 6. False groups of >= 3 machines with injection: 0.0 per 24 h on the machine graph (background alarms are absorbed into the cascades' component and show up as the low precision instead) and 1.3 time-resolved; on the clean hours 0-72 0.3 and 3.0 per 24 h. Pregel = pandas reference on components and roots: True; Neo4j (GDS WCC, Cypher roots) = Pregel: True.
+
+### Rules, fixed before any result was looked at
+
+1. **Injection.** E5b slice (first 40 machines, hours 0-48), seeds 7, 8, 9. Per seed 6 cascades: one random root + 4 random dependents, root fault at T (5-minute aligned), each dependent at T + random 2-8 min, every fault 15 min of net_in x 0.1 (`break`, which the Alibaba AE catches reliably in E5b; `--cascade-type spike` exists but was not run). Cascades start and end in hours 24-47.5 (the last 30 min of the 24-48 h half are left out so the stream's 10-minute watermark closes every cascade window before the replay ends), at least 2 h apart, at least 1 h from the two clean-data alarm waves of E8 (hour 23.5 for 55 min, hour 62.0 for 50 min), on disjoint machines, never inside a gap of the trace (at least 5 machines with data over the whole cascade; added when the first planning attempt hit such a gap, before anything was scored). Ground truth: `data/e8/cascade_root/seed_<n>/inject/cascade_truth.json` (also in `e8_graph.json` under `cascade`).
+2. **Stream.** The injected slice is replayed into Kafka `telemetry.alibaba` (`src/producer/replay.py --speedup 0`); `src/streaming/score_job.py --source alibaba --input kafka --once` reads exactly those records (starting offsets taken before the replay) and scores them with `models/ae_alibaba`, is_anomaly = ae_flag. Incidents: `src/incidents/group.py` into `data/e8/cascade_root/seed_<n>`. Hours 0-24 are the AE's history (recentring, adaptive limit), as in E5b.
+3. **Graph.** 40 vertices; incidents with onset in hours 24-48. Directed edge u -> v when v's incident starts strictly after u's and no later than 10 min after u's ends; weight = number of such incident pairs. A machine's onset = its earliest incident onset in that range.
+4. **Pregel (GraphFrames).** `connectedComponents` (weak); root = Pregel message passing of the earliest onset along the edges (both directions), then the vertex whose onset equals the component's earliest and whose in-degree is 0 (several = a tie, counted apart; none = no root). Reverse PageRank (reversed, weighted, E8's GDS formula, 30 iterations) as a secondary ranking.
+5. **Scoring.** Cascade window W = [T, end of its last fault + 10 min]. *Detected*: a member has an incident overlapping W. *Recovered component*: of the components holding an alarmed member, the one with the most members (ties: earliest alarm). *Member recall* = members in it / 5, *precision* = members in it / its size (undetected: recall 0, precision undefined). *Root correct*: the Pregel root is exactly the true root. *False groups*: components of >= 3 machines that are no cascade's recovered component; on the clean hours 0-72 of E8, every component of >= 3 machines.
+6. **Secondary, also fixed beforehand: time-resolved components.** Same edges, but components over incidents (alarm chains) instead of machines, so two unrelated incidents of one machine at different times cannot join two groups; root = machine of the chain's earliest incident; false groups = chains of >= 3 machines with no incident overlapping a cascade window.
+
+### Stream
+
+| seed | records via Kafka | windows scored | AE flags | same flag as offline `score_layer` | incidents | score_job s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 7 | 409691 | 14663 | 179 | 14663/14663 | 82 | 68 |
+| 8 | 409691 | 14663 | 179 | 14663/14663 | 83 | 64 |
+| 9 | 409691 | 14663 | 170 | 14663/14663 | 79 | 63 |
+
+The offline column re-scores the same injected raw layer with `autoencoder.score_layer` (the E5b path) as a check that the streaming job gives the same AE flags.
+
+### Per seed (main rule: machine components)
+
+| seed | detected | members alarmed | member recall | precision | exact group | root correct | root in a tie | reverse PR top = root | false groups |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 7 | 6/6 | 30/30 | 1.00 | 0.32 | 1 | 0/6 | 1 | 1/6 | 0 |
+| 8 | 6/6 | 30/30 | 1.00 | 0.14 | 0 | 0/6 | 0 | 0/6 | 0 |
+| 9 | 6/6 | 30/30 | 1.00 | 0.31 | 1 | 1/6 | 0 | 2/6 | 0 |
+
+### Per seed (secondary: time-resolved components)
+
+| seed | detected | members alarmed | member recall | precision | exact group | root correct | root in a tie | false groups |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 7 | 6/6 | 30/30 | 1.00 | 0.89 | 4 | 0/6 | 6 | 2 |
+| 8 | 6/6 | 30/30 | 1.00 | 0.81 | 2 | 0/6 | 4 | 1 |
+| 9 | 6/6 | 30/30 | 1.00 | 0.85 | 3 | 2/6 | 4 | 1 |
+
+### Mean (min-max) over seeds
+
+| | main (machine components) | time-resolved |
+| --- | ---: | ---: |
+| cascades detected (of 6) | 6.0 (6.0-6.0) | same |
+| members alarmed (of 30) | 30.0 (30.0-30.0) | same |
+| root fault detection delay, min | 0.0 (0.0-0.0) | same |
+| member recall | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) |
+| precision | 0.26 (0.14-0.32) | 0.85 (0.81-0.89) |
+| exact group (recall = precision = 1) | 0.7 (0.0-1.0) | 3.0 (2.0-4.0) |
+| root correct (of 6) | 0.3 (0.0-1.0) | 0.7 (0.0-2.0) |
+| root in a tie | 0.3 (0.0-1.0) | 4.7 (4.0-6.0) |
+| reverse PageRank top = root | 1.0 (0.0-2.0) | - |
+| false groups (>= 3 machines) per 24 h | 0.0 (0.0-0.0) | 1.3 (1.0-2.0) |
+| false groups on clean hours 0-72 (per 24 h) | 1 (0.3) | 9 (3.0) |
+
+### Every cascade
+
+| seed | cascade | start (h) | root | alarmed | main: component (roots) | time-resolved: component (roots) |
+| ---: | --- | ---: | --- | --- | --- | --- |
+| 7 | c1 | 26.58 | m_11 | 5/5 | 5 machines, 5 members (root m_11, m_2) | 5 machines, 5 members (root m_11, m_2) |
+| 7 | c2 | 28.83 | m_21 | 5/5 | 27 machines, 5 members (root none) | 8 machines, 5 members (root m_14, m_21, m_22, m_23, m_35, m_6) |
+| 7 | c3 | 30.83 | m_36 | 5/5 | 27 machines, 5 members (root none) | 5 machines, 5 members (root m_29, m_36) |
+| 7 | c4 | 34.58 | m_14 | 5/5 | 27 machines, 5 members (root none) | 7 machines, 5 members (root m_14, m_25, m_33) |
+| 7 | c5 | 38.75 | m_40 | 5/5 | 27 machines, 5 members (root none) | 5 machines, 5 members (root m_15, m_30, m_38, m_40) |
+| 7 | c6 | 46.83 | m_31 | 5/5 | 27 machines, 5 members (root none) | 5 machines, 5 members (root m_13, m_23, m_31, m_9) |
+| 8 | c1 | 25.83 | m_36 | 5/5 | 35 machines, 5 members (root none) | 5 machines, 5 members (root m_36, m_5) |
+| 8 | c2 | 28.33 | m_3 | 5/5 | 35 machines, 5 members (root none) | 11 machines, 5 members (root m_10, m_12, m_3, m_9) |
+| 8 | c3 | 31.08 | m_35 | 5/5 | 35 machines, 5 members (root none) | 5 machines, 5 members (root m_23, m_35) |
+| 8 | c4 | 34.75 | m_38 | 5/5 | 35 machines, 5 members (root none) | 7 machines, 5 members (root m_33) |
+| 8 | c5 | 44.83 | m_9 | 5/5 | 35 machines, 5 members (root none) | 6 machines, 5 members (root m_2, m_9) |
+| 8 | c6 | 46.83 | m_28 | 5/5 | 35 machines, 5 members (root none) | 6 machines, 5 members (root m_12) |
+| 9 | c1 | 25.42 | m_20 | 5/5 | 30 machines, 5 members (root none) | 7 machines, 5 members (root m_17, m_20, m_29) |
+| 9 | c2 | 27.75 | m_34 | 5/5 | 30 machines, 5 members (root none) | 9 machines, 5 members (root m_34 ✓) |
+| 9 | c3 | 30.42 | m_36 | 5/5 | 30 machines, 5 members (root none) | 5 machines, 5 members (root m_36, m_4) |
+| 9 | c4 | 34.42 | m_37 | 5/5 | 30 machines, 5 members (root none) | 6 machines, 5 members (root m_12, m_16, m_23, m_37) |
+| 9 | c5 | 38.08 | m_21 | 5/5 | 30 machines, 5 members (root none) | 5 machines, 5 members (root m_21, m_27, m_9) |
+| 9 | c6 | 46.75 | m_2 | 5/5 | 5 machines, 5 members (root m_2 ✓) | 5 machines, 5 members (root m_2 ✓) |
+
+**Why the root is rarely named (diagnostic, looked at after the results, not a rule).** Within the cascade window the true root's first alarm came strictly before every dependent's in 3 of 18 cascades, tied with at least one dependent in 15 and came later in 0. Every tied dependent had started 2-4 min after the root, so its fault fell in the root's 5-minute window and both incidents start at the same window: with window-level onsets, no rule can order them. On the main (machine) graph the cascades are moreover joined to background alarms elsewhere in the 24 hours through machines that alarm twice, so the component's earliest machine is usually not in the cascade at all.
+
+### Pregel (GraphFrames) vs pandas vs Neo4j (GDS)
+
+| graph | edges | Spark self-join = pandas | components = pandas | roots = pandas | reverse PR max diff | Neo4j WCC = Pregel | Neo4j roots (Cypher) = Pregel | Neo4j reverse PR max diff |
+| --- | ---: | --- | --- | --- | ---: | --- | --- | ---: |
+| seed_7 | 67 | True | True | True | 0.0e+00 | True | True | 4.4e-16 |
+| seed_8 | 86 | True | True | True | 0.0e+00 | True | True | 6.7e-16 |
+| seed_9 | 62 | True | True | True | 8.9e-16 | True | True | 4.4e-16 |
+| clean_0_72 | 67 | True | True | True | 1.1e-16 | - | - | - |
+
+### Neo4j operator queries (seed 7, cascade c1: true root m_11, members m_11, m_2, m_19, m_1, m_4)
+
+**(a) cascade members of alarming machine m_4, ordered by onset**
+
+```cypher
+MATCH (m:CascadeMachine {id: $machine})
+MATCH (x:CascadeMachine) WHERE x.component = m.component AND x.onset IS NOT NULL
+RETURN x.id AS machine, x.onset_time AS onset ORDER BY x.onset, x.id
+```
+
+| machine | onset |
+| --- | --- |
+| m_11 | 2026-01-02T02:35Z |
+| m_2 | 2026-01-02T02:35Z |
+| m_1 | 2026-01-02T02:40Z |
+| m_19 | 2026-01-02T02:40Z |
+| m_4 | 2026-01-02T02:40Z |
+
+**(b) path from the root to each member (m_4's component)**
+
+```cypher
+MATCH (m:CascadeMachine {id: $machine})
+MATCH (c:CascadeMachine) WHERE c.component = m.component
+WITH m, min(c.onset) AS first
+MATCH (r:CascadeMachine) WHERE r.component = m.component AND r.onset = first
+  AND NOT EXISTS { MATCH (:CascadeMachine)-[:CASCADE_NEXT]->(r) }
+MATCH (x:CascadeMachine) WHERE x.component = m.component AND x <> r
+OPTIONAL MATCH p = shortestPath((r)-[:CASCADE_NEXT*..15]->(x))
+RETURN r.id AS root, x.id AS member, [n IN nodes(p) | n.id] AS path, length(p) AS hops
+ORDER BY root, x.onset, member
+```
+
+| root | member | path | hops |
+| --- | --- | --- | --- |
+| m_11 | m_2 | - | - |
+| m_11 | m_1 | m_11 -> m_1 | 1 |
+| m_11 | m_19 | m_11 -> m_19 | 1 |
+| m_11 | m_4 | m_11 -> m_4 | 1 |
+| m_2 | m_11 | - | - |
+| m_2 | m_1 | m_2 -> m_1 | 1 |
+| m_2 | m_19 | m_2 -> m_19 | 1 |
+| m_2 | m_4 | m_2 -> m_4 | 1 |
+
+![E8c cascade](e8_graph_cascade.png)
+
+Left: timeline of the demo cascade (seed 7, c1): shaded = injected fault, bar = incident, every machine with an incident near it. Right: its recovered machine component with the directed edges (label = incident pairs).
+
+### E8c runtime
+
+- Stream part (inject + Kafka replay + score_job + offline check + incidents, 3 seeds): 934 s; score_job 195 s of it.
+- Pregel part (3 seeds + clean baseline, local[*]): 334 s (Spark start 6 s).
+- Neo4j part: 0.8 s.
+
+### E8c caveats
+
+- Injected cascades with a fixed shape (5 machines, 2-8 min delays, 15-min faults, one fault type); real cascades vary in size, delay and symptom, and no labelled Alibaba cascade exists to check against.
+- Onsets have the stream's 5-minute window resolution: a dependent starting 2-4 min after its root is often flagged in the root's window, so both get the same onset; the strict 'starts after' rule then gives no edge between them and the root can tie with that dependent.
+- The main rule builds one machine graph over 24 hours, so a machine's unrelated alarm at another time can join a cascade to background alarms (lower precision, wrong onset); the time-resolved variant avoids this but is not the graph the Pregel/Neo4j jobs run.
+- A low false-group count on the machine graph is not good news by itself: background alarm groups that touch a cascade member are merged into that cascade's component (counted in its precision, not as false groups). The time-resolved count is the cleaner false-group measure.
+- The clean baseline is E8's offline-scored hours 0-72 (no injection), not a stream run; its false groups include the two real alarm waves, which are unlabelled and may be real cluster events.

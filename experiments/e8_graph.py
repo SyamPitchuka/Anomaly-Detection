@@ -8,6 +8,8 @@ real co-failure analysis). Run from the repo root (venv active); this file does 
     python experiments/e8_neo4j.py --source smd               # 2. same graphs in Neo4j: GDS WCC / Louvain /
     python experiments/e8_neo4j.py --source alibaba           #    PageRank + Cypher
     python experiments/e8_graph.py report                     # 3. docs/results/e8_graph.md + .json + .png files
+E8c (injected cascades, experiments/e8_cascade.py stream / pregel / neo4j) is added to the same report as its own
+section, with docs/results/e8_graph_cascade.png, whenever data/e8/cascade_pregel.json exists.
 
 Input (defaults per source in SOURCES; --incidents / --scores override): the incidents layer (columns of
 LAYERS["incidents"]) and the scores it was built from. The scores give every machine's time span for the null model
@@ -1092,8 +1094,22 @@ def cmd_report(args) -> int:
     if "alibaba" in parts and ai.exists():
         extra["alibaba_input"] = json.loads(ai.read_text(encoding="utf-8"))
     md = render_md(parts, extra)  # also fills cmp[...]["mixing"] for SMD
+    from experiments import e8_cascade as C
+    cascade = C.load_results()
+    cascade_png = args.png.with_name(f"{args.png.stem}_cascade.png")
+    if cascade is not None:
+        md = md.rstrip("\n") + "\n" + "\n".join(C.section_lines(cascade, cascade_png.name)) + "\n"
     args.md.write_text(md, encoding="utf-8")
     doc = {"sources": list(parts), "comparison": {k: p["headline"] for k, p in parts.items()}, **extra}
+    if cascade is not None:
+        pg = cascade["pregel"]
+        doc["cascade"] = {"rules": pg["rules"], "over_seeds": pg["over_seeds"],
+                          "seeds": [{"seed": r["seed"], "truth": r["truth"], "score": r["score"],
+                                     "agreement": r["agreement"], "edges": r["edges"], "roots": r["roots"]}
+                                    for r in pg["seeds"]],
+                          "baseline": {k: pg["baseline"][k] for k in ("false_groups", "agreement", "n_edges",
+                                                                      "group_sizes")},
+                          "stream": cascade["stream"], "neo4j": cascade["neo4j"], "pregel_total_s": pg["total_s"]}
     for k, p in parts.items():
         doc[k] = {"pregel": p["pregel"], "neo4j": p["neo"], "compare": p["cmp"],
                   "sig_edges": p["edges"]["sig"].to_dict(orient="records"), "cluster_command": cluster_command(k)}
@@ -1107,6 +1123,9 @@ def cmd_report(args) -> int:
             inc = load_incidents(f) if f.exists() else None
         plot(png, p["vert"], p["edges"]["gap10"], p["neo"], k, inc, p["pregel"]["null"].get("waves"))
         pngs.append(png)
+    if cascade is not None:
+        C.plot(cascade_png, cascade)
+        pngs.append(cascade_png)
     for f in (args.md, args.json, *pngs):
         print(f"wrote {rel_path(f)}")
     return 0
