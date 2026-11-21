@@ -32,6 +32,12 @@ with the same functions as the batch job (recenter_centers, standardise, score, 
 Train windows are scored too (they feed the rolling median and the score history) but only test
 windows are written.
 
+Alibaba (--source alibaba, E8c): topic telemetry.alibaba, the 7 Alibaba metrics and models/ae_alibaba; records
+have no attrs.split, so every window is a test window (recentred and written), as autoencoder.score_layer scores
+Alibaba. Tier 2 / 2b stay null (their models are SMD only). The source reaches the Python workers through the
+SCORE_JOB_SOURCE environment variable. --out-dir moves the scores output, --starting-offsets picks where a new
+query starts reading (JSON offsets per partition let a run read only the records it produced itself).
+
 Hooks, each optional:
 - Tier 1 (--tier1 v1, default off): models/tier1_smd/baselines_v1.parquet (entity_id, metric, median, mad)
   -> see load_tier1_baselines() and tier1_scores(). Off -> tier1_score / tier1_flag null. Tier 1 is a
@@ -134,8 +140,16 @@ from contracts import schemas as S  # noqa: E402
 from src.detection import autoencoder as AE  # noqa: E402
 from src.serving import cassandra_store as CS  # noqa: E402  (driver imported only when --cassandra is set)
 
-SOURCE = "smd"
-METRICS = S.SMD_METRICS
+SOURCE_ENV = "SCORE_JOB_SOURCE"   # how --source reaches the Python workers (inherited from the driver)
+SOURCE_METRICS = {"smd": S.SMD_METRICS, "alibaba": S.ALIBABA_METRICS}
+SOURCE_TOPICS = {"smd": S.TOPIC_SMD, "alibaba": S.TOPIC_ALIBABA}
+# split of a record without attrs.split: SMD keeps the old meaning (not test), Alibaba has no split at all and is
+# scored like autoencoder.score_layer does, every window a test window (recentred, written to the scores layer)
+DEFAULT_SPLIT = {"smd": "train", "alibaba": "test"}
+SOURCE = os.environ.get(SOURCE_ENV, "smd")
+if SOURCE not in SOURCE_METRICS:
+    raise ValueError(f"{SOURCE_ENV}={SOURCE!r}, expected one of {tuple(SOURCE_METRICS)}")
+METRICS = SOURCE_METRICS[SOURCE]
 K = len(METRICS)
 WINDOW_US = AE.WINDOW_US
 WATERMARK = "10 minutes"
@@ -190,10 +204,26 @@ def ae_bundle(model, scaler: dict, threshold: dict) -> dict:
             "thresholds": threshold, "mode": threshold.get("mode", "global")}
 
 
-def load_tier1_baselines(path: Path = TIER1_PATH, metrics: list[str] = METRICS) -> dict | None:
+def configure(source: str) -> None:
+    """Point the module at another source (--source): metrics, models and output paths, and SCORE_JOB_SOURCE so the
+    Python workers, which import this module afresh, pick the same source. Call before the SparkSession exists."""
+    global SOURCE, METRICS, K, AE_DIR, TIER1_PATH, OUTPUT_DIR, CHECKPOINT_DIR, LATENCY_DIR
+    if source not in SOURCE_METRICS:
+        raise ValueError(f"unknown source {source!r}")
+    os.environ[SOURCE_ENV] = source
+    SOURCE, METRICS = source, SOURCE_METRICS[source]
+    K = len(METRICS)
+    AE_DIR = ROOT / S.MODELS["ae"].replace("<source>", SOURCE)
+    TIER1_PATH = ROOT / "models" / f"tier1_{SOURCE}" / "baselines_v1.parquet"
+    OUTPUT_DIR = ROOT / "data" / "scores_stream" / f"source={SOURCE}"
+    CHECKPOINT_DIR = ROOT / "checkpoints" / "score" / f"source={SOURCE}"
+    LATENCY_DIR = LATENCY_ROOT / f"source={SOURCE}"
+
+
+def load_tier1_baselines(path: Path | None = None, metrics: list[str] | None = None) -> dict | None:
     """Tier 1 input, the only place that knows its format: entity_id -> (median, mad), arrays over
     `metrics` (NaN where a metric has no baseline). None if the file does not exist."""
-    path = Path(path)
+    path, metrics = Path(path or TIER1_PATH), metrics or METRICS
     if not path.exists():
         return None
     df = pd.read_parquet(path, columns=["entity_id", "metric", "median", "mad"])
@@ -243,15 +273,17 @@ def tier1_mode() -> str:
     return mode
 
 
-def load_models(ae_dir: Path = AE_DIR, tier1_path: Path = TIER1_PATH, tier1: str | None = None) -> dict:
-    """tier1: 'off' or 'v1' (None -> tier1_mode()). Tier 1 baselines are loaded only for 'v1'."""
+def load_models(ae_dir: Path | None = None, tier1_path: Path | None = None, tier1: str | None = None) -> dict:
+    """tier1: 'off' or 'v1' (None -> tier1_mode()). Tier 1 baselines are loaded only for 'v1'. The Tier 2 / 2b
+    baselines exist for SMD only (models/kmeans_smd, models/pca_smd); other sources leave those columns null."""
+    ae_dir, tier1_path = ae_dir or AE_DIR, tier1_path or TIER1_PATH
     import torch
     tier1 = tier1_mode() if tier1 is None else tier1
     torch.set_num_threads(1)  # runs on each worker: several Python workers already run in parallel
     models = {"ae": ae_bundle(*AE.load_model(ae_dir)),
               "tier1": load_tier1_baselines(tier1_path) if tier1 == "v1" else None,
               "baselines_module": None, "baselines": None}
-    if BASELINES_MODULE.exists():
+    if BASELINES_MODULE.exists() and SOURCE == "smd":
         from src.detection import stream_baselines
         models["baselines_module"] = stream_baselines
         if hasattr(stream_baselines, "load_models"):
@@ -469,7 +501,8 @@ def telemetry_rows(telemetry):
     from pyspark.sql import functions as F
     return telemetry.select("entity_id", F.expr("unix_micros(event_time)").alias("event_us"),
                             *[F.col("metrics")[m].alias(m) for m in METRICS],
-                            F.col("attrs")["split"].alias("split"), F.col("label").cast("double").alias("label"),
+                            F.coalesce(F.col("attrs")["split"], F.lit(DEFAULT_SPLIT[SOURCE])).alias("split"),
+                            F.col("label").cast("double").alias("label"),
                             F.col("attrs")["ingest_ts"].cast("double").alias("ingest_ms"))
 
 
@@ -491,8 +524,9 @@ def build_scores(telemetry):
                           "max_ingest_ms", "batch_ingest_ms")
 
 
-def write_scores_file(pdf: pd.DataFrame, batch_id: int, out_dir: Path = OUTPUT_DIR) -> Path:
+def write_scores_file(pdf: pd.DataFrame, batch_id: int, out_dir: Path | None = None) -> Path:
     """Test windows of one micro-batch -> out_dir/batch-<id>.parquet with the exact scores-layer types."""
+    out_dir = Path(out_dir or OUTPUT_DIR)
     schema = S.arrow_schema("scores")
     start = pa.array(pdf["ws_us"].to_numpy(dtype=np.int64), type=pa.int64())
     cols = {"window_start": start.cast(schema.field("window_start").type),
@@ -511,9 +545,10 @@ def write_scores_file(pdf: pd.DataFrame, batch_id: int, out_dir: Path = OUTPUT_D
     return path
 
 
-def write_latency_file(pdf: pd.DataFrame, batch_id: int, emit_ts_ms: int, out_dir: Path = LATENCY_DIR) -> Path:
+def write_latency_file(pdf: pd.DataFrame, batch_id: int, emit_ts_ms: int, out_dir: Path | None = None) -> Path:
     """Emitted windows of one micro-batch (entity_id, ws_us, max_ingest_ms, batch_ingest_ms) ->
     out_dir/batch-<id>.parquet with LATENCY_SCHEMA (ingest times null where the records had none)."""
+    out_dir = Path(out_dir or LATENCY_DIR)
     def ms(col):
         return pa.array(pdf[col].astype("float64").round(), from_pandas=True).cast(pa.int64())
     n = len(pdf)
@@ -582,9 +617,23 @@ def state_store_conf(name: str) -> dict[str, str]:
             "spark.sql.streaming.stateStore.rocksdb.changelogCheckpointing.enabled": "true"}
 
 
+def _show(path) -> str:
+    """A path for log lines: relative to the repo root when inside it."""
+    full = Path(path).resolve()
+    return full.relative_to(ROOT).as_posix() if full.is_relative_to(ROOT) else Path(path).as_posix()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--input", choices=("kafka", "files"), default="kafka")
+    parser.add_argument("--source", choices=tuple(SOURCE_METRICS), default=SOURCE,
+                        help="smd (default): telemetry.smd, models/ae_smd; alibaba: telemetry.alibaba, "
+                             "models/ae_alibaba, every window a test window (Alibaba has no attrs.split)")
+    parser.add_argument("--out-dir", type=Path, default=None,
+                        help="scores output folder (default data/scores_stream/source=<source>)")
+    parser.add_argument("--starting-offsets", default="earliest",
+                        help="kafka input: startingOffsets of a new query: earliest (default), latest or JSON "
+                             "offsets per partition, so a run reads only the records it produced itself")
     parser.add_argument("--machines", type=int, default=None, help="files input: only the first N machine files")
     parser.add_argument("--once", action="store_true", help="trigger(availableNow=True), then stop")
     parser.add_argument("--reset", action="store_true",
@@ -623,6 +672,10 @@ def main(argv=None) -> int:
     parser.add_argument("--cassandra-cl", type=CS.consistency_arg, default=None, metavar="ONE|QUORUM|ALL",
                         help=f"consistency level of the Cassandra upserts (default {CS.DEFAULT_CL}; needs --cassandra)")
     args = parser.parse_args(argv)
+    if args.source != SOURCE:
+        configure(args.source)   # before the SparkSession, so the Python workers inherit SCORE_JOB_SOURCE
+    os.environ[SOURCE_ENV] = SOURCE
+    out_dir = Path(args.out_dir) if args.out_dir is not None else OUTPUT_DIR
     if args.cassandra_cl is not None and args.cassandra is None:
         parser.error("--cassandra-cl needs --cassandra")
     if args.cassandra is not None and args.read_only:
@@ -631,11 +684,12 @@ def main(argv=None) -> int:
     remote_checkpoint = is_uri(checkpoint)
     checkpoint_dir = checkpoint_location(checkpoint)
 
+    print(f"source: {SOURCE} ({len(METRICS)} metrics, models {_show(AE_DIR)})", flush=True)
     if not (AE_DIR / "model.pt").exists():
         print(f"FAIL no autoencoder at {AE_DIR.relative_to(ROOT).as_posix()}: run src/detection/autoencoder.py")
         return 1
     if args.reset:
-        for d in (OUTPUT_DIR, LATENCY_ROOT) + (() if remote_checkpoint else (Path(checkpoint_dir),)):
+        for d in (out_dir, LATENCY_ROOT) + (() if remote_checkpoint else (Path(checkpoint_dir),)):
             shutil.rmtree(d, ignore_errors=True)
         print("reset: removed stream output" + ("" if remote_checkpoint else " and checkpoint"), flush=True)
     if args.tier1 == "v1" and not TIER1_PATH.exists():
@@ -662,8 +716,11 @@ def main(argv=None) -> int:
     print(f"state store: {args.state_store}; checkpoint {checkpoint_dir}"
           f"{'; READ-ONLY experiment: no state, no scoring, no output' if args.read_only else ''}", flush=True)
     if kafka:
+        topic = SOURCE_TOPICS[SOURCE]
+        kw = {} if topic == S.TOPIC_SMD and args.starting_offsets == "earliest" else {
+            "topic": topic, "starting_offsets": args.starting_offsets}
         telemetry, what = read_telemetry(spark, args.max_offsets_per_trigger,
-                                         min_partitions=args.min_partitions), S.TOPIC_SMD
+                                         min_partitions=args.min_partitions, **kw), topic
         if args.max_offsets_per_trigger is not None:
             what += f" (maxOffsetsPerTrigger {args.max_offsets_per_trigger})"
         print(f"kafka minPartitions: {args.min_partitions if args.min_partitions is not None else 'unset'}"
@@ -699,7 +756,7 @@ def main(argv=None) -> int:
             pdf = test.drop("split", "window_start", "window_end").toPandas()
             mark("toPandas(test)")
             if len(pdf):
-                write_scores_file(pdf, batch_id)
+                write_scores_file(pdf, batch_id, out_dir)
             mark("write_scores")
             n_anom = int(pdf["is_anomaly"].sum()) if len(pdf) else 0
             lat = (batch_df.select("entity_id", "ws_us", "max_ingest_ms", "batch_ingest_ms").toPandas()
@@ -714,7 +771,7 @@ def main(argv=None) -> int:
                  .option("topic", S.TOPIC_ANOMALIES).save())
             mark("kafka(anomalies)")
             if lat is not None:
-                write_latency_file(lat, batch_id, int(time.time() * 1000))
+                write_latency_file(lat, batch_id, int(time.time() * 1000), LATENCY_DIR)
             mark("write_latency")
             if store is not None:
                 res = cassandra_upsert(store, pdf)
@@ -745,7 +802,8 @@ def main(argv=None) -> int:
     writer = writer.option("checkpointLocation", checkpoint_dir)
     writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime=args.trigger)
     query = writer.start()
-    sink = ("count only (--read-only)" if args.read_only else OUTPUT_DIR.relative_to(ROOT).as_posix()
+    sink = ("count only (--read-only)" if args.read_only else
+            _show(out_dir)
             + (" + topic " + S.TOPIC_ANOMALIES if kafka else ""))
     print(f"score_job started: {what} -> {sink}", flush=True)
 

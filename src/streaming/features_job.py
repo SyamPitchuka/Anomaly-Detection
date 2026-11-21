@@ -55,13 +55,16 @@ def build_spark(app_name: str = "features_job", with_kafka: bool = True, master:
 
 
 def read_telemetry(spark: SparkSession, max_offsets_per_trigger: int | None = None,
-                   min_partitions: int | None = None) -> DataFrame:
+                   min_partitions: int | None = None, topic: str = S.TOPIC_SMD,
+                   starting_offsets: str = "earliest") -> DataFrame:
     """Kafka telemetry.smd parsed with the frozen schema, event_time as timestamp, 10-minute watermark.
     max_offsets_per_trigger (default None = no limit) caps the records read per micro-batch.
     min_partitions (default None = one read task per topic partition) sets the Kafka source option
-    minPartitions: Spark splits large offset ranges so a batch is read by at least that many tasks."""
+    minPartitions: Spark splits large offset ranges so a batch is read by at least that many tasks.
+    topic (default telemetry.smd) and starting_offsets ('earliest', 'latest' or per-partition JSON) serve other
+    sources and runs that must read only their own records."""
     reader = (spark.readStream.format("kafka").option("kafka.bootstrap.servers", S.KAFKA_BOOTSTRAP)
-              .option("subscribe", S.TOPIC_SMD).option("startingOffsets", "earliest"))
+              .option("subscribe", topic).option("startingOffsets", starting_offsets))
     if max_offsets_per_trigger is not None:
         reader = reader.option("maxOffsetsPerTrigger", int(max_offsets_per_trigger))
     if min_partitions is not None:

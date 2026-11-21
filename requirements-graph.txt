@@ -1,0 +1,7 @@
+# E8 graph experiment only (experiments/e8_graph.py, experiments/e8_neo4j.py). Install AFTER requirements.txt:
+#   pip install -r requirements-graph.txt
+# GraphFrames itself is not a pip package here: Spark fetches graphframes:graphframes:0.8.3-spark3.5-s_2.12
+# from https://repos.spark-packages.org (spark.jars.packages / --packages); its Python module is inside the jar.
+# Neo4j runs in Docker: infra/docker-compose.neo4j.yml.
+neo4j==5.26.0
+networkx==3.6.1

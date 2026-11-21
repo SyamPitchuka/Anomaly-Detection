@@ -1,0 +1,33 @@
+# Neo4j 5 Community + Graph Data Science (GDS) plugin, for E8 (experiments/e8_neo4j.py). Laptop only.
+# The password comes from the NEO4J_PASSWORD environment variable (at least 8 characters).
+#   PowerShell:  $env:NEO4J_PASSWORD = "<choose one>"; docker compose -f infra/docker-compose.neo4j.yml up -d
+#   Git Bash:    NEO4J_PASSWORD=<choose one> docker compose -f infra/docker-compose.neo4j.yml up -d
+# Browser: http://localhost:7474 (user neo4j). Bolt: bolt://localhost:7687.
+# The password is fixed when the data volume is first created; to change it: docker compose ... down -v, then up.
+# First start downloads the GDS plugin (needs internet; ~1 min). Stop: docker compose -f infra/docker-compose.neo4j.yml down
+services:
+  neo4j:
+    image: neo4j:5.26.0-community
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD (at least 8 characters)}"
+      NEO4J_PLUGINS: '["graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: "gds.*"
+      NEO4J_dbms_security_procedures_allowlist: "gds.*"
+      NEO4J_server_memory_heap_max__size: "1G"
+      NEO4J_server_memory_pagecache_size: "512M"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  neo4j_data:
+  neo4j_plugins:
