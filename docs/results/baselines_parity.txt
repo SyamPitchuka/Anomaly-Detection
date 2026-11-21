@@ -1,0 +1,32 @@
+machines: machine-1-1, machine-1-2, machine-1-3, machine-1-4, machine-1-5, machine-1-6, machine-1-7, machine-1-8, machine-2-1, machine-2-2, machine-2-3, machine-2-4, machine-2-5, machine-2-6, machine-2-7, machine-2-8, machine-2-9, machine-3-1, machine-3-10, machine-3-11, machine-3-2, machine-3-3, machine-3-4, machine-3-5, machine-3-6, machine-3-7, machine-3-8, machine-3-9; stream duplicates removed: 0
+     machine  stream  batch  matched  missing  max_d_tier2  max_d_pca  nan_scores  flag_identical_% flags_s/b
+ machine-1-1    5694   5697     5694        3     2.91e-11   7.45e-09           0               100   249/249
+ machine-1-2    4737   4740     4737        3     3.55e-15   3.55e-15           0               100     60/60
+ machine-1-3    4738   4741     4738        3     4.55e-13   5.46e-12           0               100     34/34
+ machine-1-4    4739   4742     4739        3     9.09e-13   1.16e-10           0               100     38/38
+ machine-1-5    4739   4742     4739        3     1.14e-13   2.73e-12           0               100     93/93
+ machine-1-6    4736   4739     4736        3     5.68e-14   1.42e-13           0               100   486/486
+ machine-1-7    4737   4740     4737        3     2.27e-13   1.82e-12           0               100     56/56
+ machine-1-8    4738   4741     4738        3     2.84e-14   4.26e-14           0               100     43/43
+ machine-2-1    4737   4740     4737        3     7.11e-15   3.55e-15           0               100     39/39
+ machine-2-2    4738   4741     4738        3     1.14e-13   3.18e-12           0               100   100/100
+ machine-2-3    4736   4739     4736        3     1.42e-14   7.11e-15           0               100     31/31
+ machine-2-4    4736   4739     4736        3     4.26e-14   1.14e-13           0               100     50/50
+ machine-2-5    4736   4739     4736        3     1.42e-14   7.11e-15           0               100     67/67
+ machine-2-6    5747   5750     5747        3     4.26e-14   2.13e-14           0               100     93/93
+ machine-2-7    4737   4740     4737        3     1.42e-14   3.55e-15           0               100     43/43
+ machine-2-8    4738   4741     4738        3     1.82e-12   1.46e-11           0               100     78/78
+ machine-2-9    5742   5745     5742        3     7.28e-12    1.4e-09           0               100   493/493
+ machine-3-1    5737   5740     5737        3     4.55e-13   1.82e-12           0               100     65/65
+machine-3-10    4736   4739     4736        3     3.55e-15   4.44e-16           0               100     13/13
+machine-3-11    5737   5740     5737        3     1.42e-13   1.14e-13           0               100   243/243
+ machine-3-2    4738   4741     4738        3     3.55e-15   7.11e-15           0               100       6/6
+ machine-3-3    4739   4742     4739        3     7.11e-15   1.78e-15           0               100     38/38
+ machine-3-4    4735   4738     4735        3     4.83e-13   1.14e-13           0               100   330/330
+ machine-3-5    4736   4739     4736        3     1.14e-13   1.02e-12           0               100   307/307
+ machine-3-6    5743   5746     5743        3     1.14e-13   9.09e-13           0               100   259/259
+ machine-3-7    5738   5741     5738        3     3.64e-12   2.79e-09           0               100     70/70
+ machine-3-8    5739   5742     5739        3     2.84e-14   8.53e-14           0               100   268/268
+ machine-3-9    5741   5744     5741        3     9.09e-13   3.64e-12           0               100     75/75
+         ALL  141624 141708   141624       84     2.91e-11   7.45e-09           0               100 3727/3727
+PASS baselines parity: 141624 matched windows, max |tier2 diff| 2.91e-11, max |pca diff| 7.45e-09, tier2_flag identical 100.00% (targets <= 0.001, >= 99.9%)
