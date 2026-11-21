@@ -517,3 +517,63 @@ Left: timeline of the demo cascade (seed 7, c1): shaded = injected fault, bar = 
 - The main rule builds one machine graph over 24 hours, so a machine's unrelated alarm at another time can join a cascade to background alarms (lower precision, wrong onset); the time-resolved variant avoids this but is not the graph the Pregel/Neo4j jobs run.
 - A low false-group count on the machine graph is not good news by itself: background alarm groups that touch a cascade member are merged into that cascade's component (counted in its precision, not as false groups). The time-resolved count is the cleaner false-group measure.
 - The clean baseline is E8's offline-scored hours 0-72 (no injection), not a stream run; its false groups include the two real alarm waves, which are unlabelled and may be real cluster events.
+
+## E8c onset refinement and held-out fault-size cases
+
+Same 5-minute stream, incidents and time-resolved groups as E8c; only the onset used to pick a group's root changes. The 5-minute (window) result is kept next to the refined one. No new model.
+
+### Rules, fixed before any held-out run or refined onset existed
+
+1. **Groups**: E8c's time-resolved groups (incident chains: v starts strictly after u and <= 10 min after u ends), incidents with onset in hours 24-48; recovered group chosen as in E8c.
+2. **Refined onset** per incident: top-1 metric of its first alarm window; baseline = median and MAD of that metric's raw 10-s readings in the 60 min before the window; onset = first raw reading from 10 min before the window start to the window end with |x - median| / (1.4826 MAD) > 4 on >= 2 consecutive readings, else the window start. No labels or ground truth. Left open by the request and fixed here: MAD = 0, fewer than 30 baseline readings or no top metric -> window start.
+3. **Root** = member(s) whose earliest onset in the group is within 10 s of the group's earliest; correct only if exactly the true root. The window method uses the same rule with window starts.
+4. **Runs**: seeds 7-9 = the existing E8c cascades (all faults x0.1). Held-out seeds 10, 11, 12, 6 cascades each, E8c placement rules, injected three times with identical roots, members and times: **A** strong (root x0.1, dependents x0.1), **B** weak dependents (root x0.1, dependents x0.5), **C** silent root (root x0.8, dependents x0.1); each through Kafka + score_job.
+5. **Metrics**: root alarmed; members detected; group recall, precision (detected cascades), F1 (0 when undetected); root accuracy; onset error = |onset - true fault start| for the cascade members in the recovered group (median per seed); false groups = chains of >= 3 machines with no incident in a cascade window, per 24 h. Mean (min-max) over the three seeds of each set.
+
+### Result
+
+| set | onset | root alarmed (of 6) | members detected (of 30) | group recall | precision | F1 | root accuracy | onset error, median s | false groups / 24 h |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| seeds 7-9 | window | 6.0 | 30.0 | 1.00 | 0.85 (0.81-0.89) | 0.91 (0.88-0.93) | 0.11 (0.00-0.33) | 100 (60-120) | 1.3 (1.0-2.0) |
+| seeds 7-9 | refined | 6.0 | 30.0 | 1.00 | 0.85 (0.81-0.89) | 0.91 (0.88-0.93) | 0.67 (0.50-0.83) | 0 | 1.3 (1.0-2.0) |
+| held-out A | window | 6.0 | 30.0 | 0.96 (0.87-1.00) | 0.91 (0.89-0.95) | 0.91 (0.86-0.94) | 0.00 | 120 | 2.0 |
+| held-out A | refined | 6.0 | 30.0 | 0.96 (0.87-1.00) | 0.91 (0.89-0.95) | 0.91 (0.86-0.94) | 0.50 | 0 | 2.0 |
+| held-out B | window | 6.0 | 30.0 | 1.00 | 0.91 (0.89-0.95) | 0.95 (0.93-0.97) | 0.06 (0.00-0.17) | 120 | 2.0 |
+| held-out B | refined | 6.0 | 30.0 | 1.00 | 0.91 (0.89-0.95) | 0.95 (0.93-0.97) | 0.61 (0.50-0.67) | 0 | 2.0 |
+| held-out C | window | 6.0 | 30.0 | 0.96 (0.87-1.00) | 0.91 (0.89-0.95) | 0.91 (0.86-0.94) | 0.00 | 120 | 2.0 |
+| held-out C | refined | 6.0 | 30.0 | 0.96 (0.87-1.00) | 0.91 (0.89-0.95) | 0.91 (0.86-0.94) | 0.50 | 0 | 2.0 |
+
+Group columns (alarms, recall, precision, F1, false groups) are the same for both onset methods by construction: only the root and the onset error depend on the onset.
+
+**Reading.** Root accuracy, window onset -> refined onset (mean over seeds): seeds 7-9: 0.11 -> 0.67 (onset error 100 -> 0 s); held-out A: 0.00 -> 0.50 (onset error 120 -> 0 s); held-out B: 0.06 -> 0.61 (onset error 120 -> 0 s); held-out C: 0.00 -> 0.50 (onset error 120 -> 0 s). Raw readings date most members to their true fault start (median error 0 s against 60-120 s for the window), so the 2-4 minute delays that tie in a 5-minute window are now ordered; root accuracy rises in every set, held-out seeds included, but stays near one half. Groups, alarms, recall, precision, F1 and false groups are unchanged: the refinement reorders machines inside a group, it adds no alarm. Why the refined root was still wrong (post-hoc description, 72 cascades): 14 groups hold a non-member whose alarm starts earlier (a background alarm chained to the cascade within 10 min), 12 ties within 10 s that include the root (mostly a dependent whose refined onset found no run above the threshold and fell back to the window start, i.e. the root's window), 5 a member dated before the root, 0 no group. **Case C did not produce a silent root:** at x0.8 the root's net_in drop was still flagged in every cascade of every held-out seed (root alarmed 6/6), because Alibaba net_in is almost flat and a 20 % drop is many robust standard deviations for the AE. So the assumption 'root = earliest visible fault' was not stressed here: its failure would need a root fault below the AE's detection level, which x0.8 is not on this data. Case C is reported as run, with that caveat; a weaker root was not tried, since the factors were fixed in advance.
+
+Refined onsets: 443 of 653 incidents got a raw-reading onset; the rest fell back to the window start (no run above the threshold 106, MAD 0 79, short baseline 25, no top metric 0). Groups and roots: GraphFrames connectedComponents + Pregel min-onset propagation on the incident graph; pandas reference equal on every run: True; Neo4j (GDS WCC + Cypher roots) equal on every run: True.
+
+### Per run
+
+| run | factors (root / dependents) | root alarmed | recall | root correct window / refined | onset error median s window / refined |
+| --- | --- | ---: | ---: | ---: | ---: |
+| seed_7 | x0.1 / x0.1 | 6/6 | 1.00 | 0 / 4 | 120 / 0 |
+| seed_8 | x0.1 / x0.1 | 6/6 | 1.00 | 0 / 3 | 120 / 0 |
+| seed_9 | x0.1 / x0.1 | 6/6 | 1.00 | 2 / 5 | 60 / 0 |
+| seed_10_A | x0.1 / x0.1 | 6/6 | 0.87 | 0 / 3 | 120 / 0 |
+| seed_11_A | x0.1 / x0.1 | 6/6 | 1.00 | 0 / 3 | 120 / 0 |
+| seed_12_A | x0.1 / x0.1 | 6/6 | 1.00 | 0 / 3 | 120 / 0 |
+| seed_10_B | x0.1 / x0.5 | 6/6 | 1.00 | 0 / 4 | 120 / 0 |
+| seed_11_B | x0.1 / x0.5 | 6/6 | 1.00 | 0 / 3 | 120 / 0 |
+| seed_12_B | x0.1 / x0.5 | 6/6 | 1.00 | 1 / 4 | 120 / 0 |
+| seed_10_C | x0.8 / x0.1 | 6/6 | 0.87 | 0 / 3 | 120 / 0 |
+| seed_11_C | x0.8 / x0.1 | 6/6 | 1.00 | 0 / 3 | 120 / 0 |
+| seed_12_C | x0.8 / x0.1 | 6/6 | 1.00 | 0 / 3 | 120 / 0 |
+
+### Runtime
+
+- Held-out streams (3 seeds x 3 cases: inject + Kafka + score_job + offline check + incidents): 2864 s; score_job 543 s of it; every run's stream flags = offline flags: True.
+- Onsets + GraphFrames/Pregel + scoring (12 runs): 380 s.
+- Neo4j check: 5.2 s.
+
+### Caveats
+
+- Injected cascades of one shape and one fault type; the held-out seeds test that the refinement was not tuned on seeds 7-9, not that it holds for real faults.
+- **Root = earliest visible fault is an assumption.** If the stream never alarms on the true root, no onset rule can name it, and the earliest *visible* member is named instead. Case C (root x0.8) was meant to create that situation; on this data the AE still flagged every x0.8 root, so the assumption remains untested here rather than confirmed.
+- The refined onset only looks at the top-1 metric and inside [window - 10 min, window end]; a fault that starts earlier than that, or shows first in another metric, falls back or is misdated.

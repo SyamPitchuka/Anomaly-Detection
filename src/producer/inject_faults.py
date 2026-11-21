@@ -271,7 +271,7 @@ def apply_fault(df: pd.DataFrame, fault: dict) -> int:
     inside = (df["ts"] >= fault["start_s"]) & (df["ts"] < fault["end_s"])
     metric = fault["metric"]
     if fault["type"] == "spike":
-        df.loc[inside, metric] *= SPIKE_FACTOR
+        df.loc[inside, metric] *= fault.get("factor", SPIKE_FACTOR)
     elif fault["type"] == "drift":
         minutes = (df.loc[inside, "ts"] - fault["start_s"]) / 60.0
         df.loc[inside, metric] *= 1.0 + DRIFT_RATE * minutes
@@ -283,7 +283,7 @@ def apply_fault(df: pd.DataFrame, fault: dict) -> int:
         target = inside & df[metric].notna()
         df.loc[target, metric] = np.resize(donor, int(target.sum()))
     else:
-        df.loc[inside, metric] *= BREAK_FACTOR
+        df.loc[inside, metric] *= fault.get("factor", BREAK_FACTOR)
     df.loc[inside, "label"] = 1
     return int(inside.sum())
 
@@ -420,8 +420,15 @@ def plan_cascades(series: dict[str, pd.DataFrame], rng: random.Random, n: int = 
 def inject_cascades(root: Path = ROOT, out_root: Path | None = None, machines: int = 40, start_hours: float = 0,
                     hours: float = 48, seed: int = 7, n: int = CASCADE_COUNT, window_h: tuple[float, float] = (24, 48),
                     avoid: list[tuple[float, float]] = (), kind: str = "break",
-                    dependents: int = CASCADE_DEPENDENTS) -> dict:
-    """Slice, inject the cascades, write the raw layer, cascade_truth.json and injection_log.json; returns the truth."""
+                    dependents: int = CASCADE_DEPENDENTS, root_factor: float | None = None,
+                    dependent_factor: float | None = None) -> dict:
+    """Slice, inject the cascades, write the raw layer, cascade_truth.json and injection_log.json; returns the truth.
+    root_factor / dependent_factor replace the fault size (the metric multiplier, default BREAK_FACTOR or
+    SPIKE_FACTOR) of the roots / dependents; the plan (machines, times, metrics) does not depend on them, so one seed
+    gives the same cascades at every fault size (E8c held-out cases)."""
+    default = BREAK_FACTOR if kind == "break" else SPIKE_FACTOR
+    factors = {"root": default if root_factor is None else root_factor,
+               "dependent": default if dependent_factor is None else dependent_factor}
     out_root = Path(out_root or Path(root) / DEFAULT_OUT)
     series = read_slice(root, machines, start_hours, hours)
     plan = plan_cascades(series, random.Random(seed), n, tuple(window_h), list(avoid), kind, dependents)
@@ -429,11 +436,12 @@ def inject_cascades(root: Path = ROOT, out_root: Path | None = None, machines: i
     for c in plan:
         faults = []
         for f in c["faults"]:
+            f = {**f, "factor": factors[f["role"]]}
             n_rows = apply_fault(series[f["entity_id"]], f)
-            params = {"factor": BREAK_FACTOR if kind == "break" else SPIKE_FACTOR}
+            params = {"factor": f["factor"]}
             faults.append({"fault_id": f["fault_id"], "entity_id": f["entity_id"], "role": f["role"],
-                           "offset_min": f["offset_min"], "metric": f["metric"], "start_time": iso(f["start_s"]),
-                           "end_time": iso(f["end_s"]), "n_rows": n_rows})
+                           "offset_min": f["offset_min"], "metric": f["metric"], "factor": f["factor"],
+                           "start_time": iso(f["start_s"]), "end_time": iso(f["end_s"]), "n_rows": n_rows})
             log_faults.append({"fault_id": f["fault_id"], "type": kind, "entity_id": f["entity_id"],
                                "metric": f["metric"], "start_time": iso(f["start_s"]), "end_time": iso(f["end_s"]),
                                "n_rows": n_rows, "params": params})
@@ -444,7 +452,7 @@ def inject_cascades(root: Path = ROOT, out_root: Path | None = None, machines: i
     common = {"source": SOURCE, "seed": seed, "machines": sorted(series),
               "slice_start": iso(BASE_S + start_hours * 3600), "slice_end": iso(BASE_S + (start_hours + hours) * 3600),
               "rows": int(sum(len(df) for df in series.values()))}
-    truth = {**common, "mode": "cascade", "type": kind,
+    truth = {**common, "mode": "cascade", "type": kind, "factors": factors,
              "rules": {"cascades": n, "dependents": dependents, "fault_minutes": CASCADE_MINUTES,
                        "dependent_delay_min": list(CASCADE_DELAY_MIN), "window_hours": list(window_h),
                        "min_gap_hours": CASCADE_GAP_H, "avoid": [list(a) for a in avoid],
@@ -599,6 +607,8 @@ def main() -> int:
     ap.add_argument("--cascade-type", choices=CASCADE_TYPES, default="break")
     ap.add_argument("--cascades", type=int, default=CASCADE_COUNT)
     ap.add_argument("--cascade-dependents", type=int, default=CASCADE_DEPENDENTS)
+    ap.add_argument("--root-factor", type=float, default=None, help="cascade mode: root fault multiplier")
+    ap.add_argument("--dependent-factor", type=float, default=None, help="cascade mode: dependent fault multiplier")
     ap.add_argument("--cascade-window", type=float, nargs=2, default=(24.0, 48.0), metavar=("FROM_H", "TO_H"))
     ap.add_argument("--cascade-avoid", type=avoid_arg, nargs="*", default=[], metavar="HOUR:MINUTES",
                     help="intervals the cascades keep --cascade-margin away from, e.g. 23.5:55 62.0:50")
@@ -607,7 +617,8 @@ def main() -> int:
         out = a.out_root or a.root / DEFAULT_OUT
         inject_cascades(a.root, out, machines=a.machines, start_hours=a.start_hours, hours=a.hours, seed=a.seed,
                         n=a.cascades, window_h=tuple(a.cascade_window), avoid=a.cascade_avoid, kind=a.cascade_type,
-                        dependents=a.cascade_dependents)
+                        dependents=a.cascade_dependents, root_factor=a.root_factor,
+                        dependent_factor=a.dependent_factor)
         print(f"truth: {Path(out) / CASCADE_LOG}")
         return 0
     log, table = run(a.root, a.out_root, a.threshold, a.scores, a.flag_col, machines=a.machines,

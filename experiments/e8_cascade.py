@@ -133,14 +133,19 @@ def stream_vs_offline(model_dir: Path, raw_dir: Path, scores_dir: Path) -> dict:
             "stream_flags": int(both["stream"].sum())}
 
 
-def run_seed_stream(seed: int, spark, root: Path = CASCADE_ROOT) -> dict:
+def run_seed_stream(seed: int, spark, root: Path = CASCADE_ROOT, name: str | None = None,
+                    factors: dict | None = None) -> dict:
+    """One injected slice through Kafka + score_job + group.py. name: run folder under root (default seed_<n>);
+    factors: {"root": x, "dependent": y} fault sizes (default: the break factor for both)."""
     from src.incidents import group as GR
     from src.producer import inject_faults as I
     from src.producer import replay as R
-    d = seed_dir(seed, root)
-    out, t = {"seed": seed}, time.perf_counter()
+    name = name or f"seed_{seed}"
+    d = ROOT / root / name
+    out, t = {"seed": seed, "name": name}, time.perf_counter()
     truth = I.inject_cascades(ROOT, d / "inject", machines=MACHINES, hours=HOURS, seed=seed, n=N_CASCADES,
-                              window_h=WINDOW_H, avoid=list(AVOID), kind=CASCADE_TYPE)
+                              window_h=WINDOW_H, avoid=list(AVOID), kind=CASCADE_TYPE,
+                              root_factor=(factors or {}).get("root"), dependent_factor=(factors or {}).get("dependent"))
     out["inject_s"] = time.perf_counter() - t
     t = time.perf_counter()
     before = topic_end_offsets()
@@ -152,7 +157,7 @@ def run_seed_stream(seed: int, spark, root: Path = CASCADE_ROOT) -> dict:
     if out["kafka_records"] != truth["rows"]:
         raise RuntimeError(f"seed {seed}: {out['kafka_records']} records in Kafka, {truth['rows']} rows injected")
     scores = GR.scores_dir(d, SOURCE)
-    ckpt = ROOT / CKPT_ROOT / f"seed_{seed}"
+    ckpt = ROOT / CKPT_ROOT / name
     for x in (scores, ckpt, GR.incidents_dir(d, SOURCE)):
         shutil.rmtree(x, ignore_errors=True)
     cmd = score_job_cmd(scores.relative_to(ROOT), ckpt.relative_to(ROOT), before)   # score_job runs in ROOT

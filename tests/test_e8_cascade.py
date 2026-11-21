@@ -186,7 +186,8 @@ class FakeSession:
         if "count(m) AS n" in c or "count(r) AS n" in c:
             return Result([{"n": 20}])
         if "m.component AS v" in c:
-            return Result([{"id": m, "v": hash(k) % 97} for m, k in r["components"].items()])
+            ids = {k: n for n, k in enumerate(sorted(set(r["components"].values())))}
+            return Result([{"id": m, "v": ids[k]} for m, k in r["components"].items()])
         if "gds.pageRank.stream" in c:
             return Result([{"id": m, "v": v} for m, v in r["revpr"].items()])
         if c.startswith("MATCH (c:CascadeMachine) WHERE c.onset IS NOT NULL"):

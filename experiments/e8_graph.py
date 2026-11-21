@@ -9,7 +9,8 @@ real co-failure analysis). Run from the repo root (venv active); this file does 
     python experiments/e8_neo4j.py --source alibaba           #    PageRank + Cypher
     python experiments/e8_graph.py report                     # 3. docs/results/e8_graph.md + .json + .png files
 E8c (injected cascades, experiments/e8_cascade.py stream / pregel / neo4j) is added to the same report as its own
-section, with docs/results/e8_graph_cascade.png, whenever data/e8/cascade_pregel.json exists.
+section, with docs/results/e8_graph_cascade.png, whenever data/e8/cascade_pregel.json exists; the onset refinement and
+held-out cases (experiments/e8_onset.py) likewise whenever data/e8/onset_pregel.json exists.
 
 Input (defaults per source in SOURCES; --incidents / --scores override): the incidents layer (columns of
 LAYERS["incidents"]) and the scores it was built from. The scores give every machine's time span for the null model
@@ -1099,8 +1100,19 @@ def cmd_report(args) -> int:
     cascade_png = args.png.with_name(f"{args.png.stem}_cascade.png")
     if cascade is not None:
         md = md.rstrip("\n") + "\n" + "\n".join(C.section_lines(cascade, cascade_png.name)) + "\n"
+    from experiments import e8_onset as O
+    onset = O.load_results()
+    if onset is not None:
+        md = md.rstrip("\n") + "\n" + "\n".join(O.section_lines(onset)) + "\n"
     args.md.write_text(md, encoding="utf-8")
     doc = {"sources": list(parts), "comparison": {k: p["headline"] for k, p in parts.items()}, **extra}
+    if onset is not None:
+        po = onset["pregel"]
+        doc["cascade_onset"] = {"rules": po["rules"], "sets": po["sets"],
+                                "runs": [{k: r[k] for k in ("set", "seed", "case", "name", "factors", "how", "agreement",
+                                                            "score")} | {"truth": r["truth"]["cascades"]}
+                                         for r in po["runs"]],
+                                "stream": onset["stream"], "neo4j": onset["neo4j"], "pregel_total_s": po["total_s"]}
     if cascade is not None:
         pg = cascade["pregel"]
         doc["cascade"] = {"rules": pg["rules"], "over_seeds": pg["over_seeds"],
