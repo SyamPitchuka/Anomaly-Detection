@@ -1,0 +1,3 @@
+schema ok: keyspace anomaly (SimpleStrategy, RF 2), tables anomalies_by_machine, incidents_by_machine on spark-w2
+anomaly.anomalies_by_machine: 1158 rows
+anomaly.incidents_by_machine: 0 rows
